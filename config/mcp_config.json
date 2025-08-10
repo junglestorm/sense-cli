@@ -1,0 +1,25 @@
+{
+  "servers": [
+    {
+      "name": "time_server",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/time_server.py"],
+      "env": {}
+    },
+    {
+      "name": "stock_core_server",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/stock_core_server.py"],
+      "env": {}
+    },
+    {
+      "name": "stock_news_server",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/stock_news_server.py"],
+      "env": {}
+    }
+  ]
+}

@@ -1,0 +1,148 @@
+# ================================
+# Stock CLI 项目专用 .gitignore
+# ================================
+
+# Python 基础忽略规则
+# ==================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 包分发相关
+# ============
+build/
+dist/
+*.egg-info/
+*.egg
+.installed.cfg
+MANIFEST
+
+# 虚拟环境
+# ========
+.venv/
+venv/
+.env
+.envrc
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# 依赖管理
+# ========
+# UV lock 文件 - 忽略以避免依赖冲突
+uv.lock
+
+# 测试和覆盖率
+# ============
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# 开发工具缓存
+# ============
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# IDE 配置
+# ========
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 数据文件 - 项目特有
+# ==================
+# 数据库文件 (用户数据，不应版本控制)
+data/db/*.db
+data/db/*.sqlite
+data/db/*.sqlite3
+data/db/vector_store/
+
+# 日志文件 (运行时生成)
+data/logs/*.log
+logs/*.log
+
+# 用户历史记录 (个人数据)
+data/history.txt
+
+# 配置文件 - 部分忽略
+# ==================
+# API密钥等敏感配置
+config/settings.yaml
+config/.env*
+
+# 保留模板和示例配置在版本控制中
+!config/settings.example.yaml
+!config/ollama-example.yaml
+!config/*.example.*
+
+# 保留帮助脚本
+!scripts/
+
+# 临时文件
+# ========
+*.tmp
+*.temp
+*.bak
+*.backup
+*_backup.py
+*_old.py
+
+# 系统文件
+# ========
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 项目特有文件
+# ============
+# 主文件的各种版本（开发过程中的临时文件）
+main_old.py
+main_new.py
+main_cli.py
+
+# 测试和演示文件
+demo*.py
+test_*.py
+interactive.py
+run_main.py
+
+# 文档构建输出
+docs/_build/
+docs/build/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# 其他工具
+# ========
+.scrapy
+.sass-cache
+.cache
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 压缩文件
+*.7z
+*.rar
+*.zip
+*.tar.gz
+*.tgz

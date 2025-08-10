@@ -1,0 +1,83 @@
+# STOCK CLI - Ollama 本地模型配置示例
+# 复制此文件为 settings.yaml 并修改相应参数
+
+# LLM 设置 - Ollama 本地部署
+llm:
+  openai:
+    api_key: ""  # Ollama不需要API Key，保持空白
+    base_url: "http://localhost:11434/v1"  # Ollama默认地址
+    model: "llama3.2:3b"  # 替换为你已下载的模型，如: llama3:8b, qwen:7b, gemma:7b
+    fallback_model: "llama3.2:1b"  # 备用轻量级模型
+    max_tokens: 4096
+    temperature: 0.1
+    timeout: 120  # 本地模型可能需要更长时间
+
+# 工具 API 配置
+apis:
+  search:
+    engine: "duckduckgo"  # 免费搜索引擎，无需API Key
+    max_results: 5
+
+# 金融数据源
+financial:
+  akshare:
+    enabled: true  # 免费金融数据源
+
+# 数据库配置
+database:
+  vector_store:
+    type: "chromadb"
+    path: "data/db/vector_store"
+    collection_name: "stock_analysis_memory"
+  structured:
+    type: "sqlite"
+    path: "data/db/structured_memory.sqlite"
+
+# 日志配置
+logging:
+  level: "INFO"
+  file_path: "data/logs/agent.log"
+  max_file_size: "10MB"
+  backup_count: 5
+  console_output: true
+
+# Agent 行为配置
+agent:
+  max_iterations: 15  # 本地模型可以适当减少迭代次数
+  timeout: 300
+  context_window: 6144  # 根据模型调整
+  max_memory_results: 8
+  summary_threshold: 1500
+
+# CLI 配置
+cli:
+  theme: "monokai"
+  progress_bar: true
+  auto_save: true
+  output_format: "markdown"
+
+# =================== 使用说明 ===================
+#
+# 1. 安装 Ollama (如果还未安装):
+#    curl -fsSL https://ollama.com/install.sh | sh
+#
+# 2. 下载模型 (选择一个):
+#    ollama pull llama3.2:3b    # 轻量级，约2GB
+#    ollama pull llama3:8b      # 平衡性能，约4.7GB
+#    ollama pull qwen:7b        # 中文友好，约4GB
+#
+# 3. 启动 Ollama 服务:
+#    ollama serve
+#
+# 4. 复制此文件为 settings.yaml:
+#    cp ollama-example.yaml settings.yaml
+#
+# 5. 运行 STOCK CLI:
+#    uv run python interactive.py
+#
+# =================== 模型推荐 ===================
+#
+# 入门用户: llama3.2:1b (快速响应)
+# 日常使用: llama3.2:3b (性能平衡)
+# 专业分析: llama3:8b 或 qwen:7b (深度分析)
+#
