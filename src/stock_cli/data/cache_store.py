@@ -62,10 +62,14 @@ class DataCache:
             conn.commit()
 
     # -------- 通用内部工具 --------
-    def _get_entry(self, table: str, where: str, params: tuple) -> Optional[Dict[str, Any]]:
+    def _get_entry(
+        self, table: str, where: str, params: tuple
+    ) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute(f"SELECT data_json, fetched_at FROM {table} WHERE {where}", params)
+            cur.execute(
+                f"SELECT data_json, fetched_at FROM {table} WHERE {where}", params
+            )
             row = cur.fetchone()
             if not row:
                 return None
@@ -107,7 +111,9 @@ class DataCache:
         self, symbol: str, market: str, period: str, ttl: int
     ) -> Optional[Dict[str, Any]]:
         entry = self._get_entry(
-            "stock_history", "symbol=? AND market=? AND period=?", (symbol, market, period)
+            "stock_history",
+            "symbol=? AND market=? AND period=?",
+            (symbol, market, period),
         )
         if not entry:
             return None
@@ -119,7 +125,13 @@ class DataCache:
         self._set_entry(
             "stock_history",
             "symbol, market, period, data_json, fetched_at",
-            (symbol, market, period, json.dumps(data, ensure_ascii=False), int(time.time())),
+            (
+                symbol,
+                market,
+                period,
+                json.dumps(data, ensure_ascii=False),
+                int(time.time()),
+            ),
         )
 
     # -------- 概览 --------

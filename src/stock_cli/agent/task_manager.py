@@ -142,7 +142,9 @@ class TaskManager:
                 {
                     "id": task.id,
                     "description": task.description[:50],
-                    "started_at": task.started_at.isoformat() if task.started_at else None,
+                    "started_at": task.started_at.isoformat()
+                    if task.started_at
+                    else None,
                     "current_iteration": task.current_iteration,
                 }
                 for task in self.active_tasks.values()
@@ -221,7 +223,10 @@ class TriggerManager:
                         task = self.task_manager.create_task(
                             description=trigger.task_template,
                             priority=trigger.priority,
-                            context={"triggered_by": trigger.name, "trigger_type": trigger.type},
+                            context={
+                                "triggered_by": trigger.name,
+                                "trigger_type": trigger.type,
+                            },
                         )
                         self.task_manager.add_task(task)
 

@@ -88,7 +88,9 @@ class MemoryManager:
             return
 
         try:
-            vector_store_path = self.config.get("vector_store_path", "data/db/vector_store")
+            vector_store_path = self.config.get(
+                "vector_store_path", "data/db/vector_store"
+            )
             os.makedirs(vector_store_path, exist_ok=True)
 
             client = chromadb.PersistentClient(
@@ -96,7 +98,9 @@ class MemoryManager:
                 settings=Settings(allow_reset=True, anonymized_telemetry=False),
             )
 
-            collection_name = self.config.get("collection_name", "stock_analysis_memory")
+            collection_name = self.config.get(
+                "collection_name", "stock_analysis_memory"
+            )
             self.vector_store = client.get_or_create_collection(
                 name=collection_name, metadata={"hnsw:space": "cosine"}
             )
@@ -107,7 +111,9 @@ class MemoryManager:
             logger.error(f"初始化向量数据库失败: {str(e)}")
             self.vector_store = None
 
-    async def store_long_term_memory(self, content: str, metadata: Dict[str, Any] = None) -> str:
+    async def store_long_term_memory(
+        self, content: str, metadata: Dict[str, Any] = None
+    ) -> str:
         """存储长期记忆"""
         if not self.vector_store:
             logger.warning("向量数据库不可用，无法存储长期记忆")
@@ -138,7 +144,9 @@ class MemoryManager:
             return []
 
         try:
-            results = self.vector_store.query(query_texts=[query], n_results=max_results)
+            results = self.vector_store.query(
+                query_texts=[query], n_results=max_results
+            )
 
             memories = []
             if results["documents"] and results["documents"][0]:
@@ -146,9 +154,13 @@ class MemoryManager:
                     memory = MemoryEntry(
                         id=results["ids"][0][i] if results["ids"] else "",
                         content=doc,
-                        metadata=results["metadatas"][0][i] if results["metadatas"] else {},
+                        metadata=results["metadatas"][0][i]
+                        if results["metadatas"]
+                        else {},
                         relevance_score=(
-                            1 - results["distances"][0][i] if results["distances"] else 0
+                            1 - results["distances"][0][i]
+                            if results["distances"]
+                            else 0
                         ),
                     )
                     memories.append(memory)
@@ -191,7 +203,12 @@ class MemoryManager:
                 """
                 )
                 return [
-                    {"symbol": row[0], "name": row[1], "market": row[2], "priority": row[3]}
+                    {
+                        "symbol": row[0],
+                        "name": row[1],
+                        "market": row[2],
+                        "priority": row[3],
+                    }
                     for row in cursor.fetchall()
                 ]
         except Exception as e:
@@ -233,7 +250,9 @@ class MemoryManager:
         """获取用户偏好设置"""
         try:
             with sqlite3.connect(self.structured_db_path) as conn:
-                cursor = conn.execute("SELECT value FROM user_preferences WHERE key = ?", (key,))
+                cursor = conn.execute(
+                    "SELECT value FROM user_preferences WHERE key = ?", (key,)
+                )
                 row = cursor.fetchone()
                 if row:
                     return json.loads(row[0])
@@ -274,7 +293,7 @@ class ContextManager:
         """为任务构建上下文"""
         # 从任务现有的上下文开始（这样可以保留持久上下文，如对话历史）
         context = task.context.copy() if task.context else {}
-        
+
         # 添加任务执行所需的基本信息（只在不存在时添加）
         if "task" not in context:
             context["task"] = task
@@ -289,7 +308,7 @@ class ContextManager:
 
             if relevant_memories:
                 memory_texts = [
-                    f"相关记忆 {i+1}: {memory.content}"
+                    f"相关记忆 {i + 1}: {memory.content}"
                     for i, memory in enumerate(relevant_memories)
                 ]
                 context["memory_context"] = "\n\n".join(memory_texts)
@@ -301,9 +320,11 @@ class ContextManager:
                 "analysis_style": self.memory_manager.get_user_preference(
                     "analysis_style", "comprehensive"
                 ),
-                "risk_tolerance": self.memory_manager.get_user_preference("risk_tolerance", "moderate"),
+                "risk_tolerance": self.memory_manager.get_user_preference(
+                    "risk_tolerance", "moderate"
+                ),
             }
-        
+
         # 确保 memory_context 存在
         if "memory_context" not in context:
             context["memory_context"] = ""
@@ -317,7 +338,9 @@ class ContextManager:
 
         # 简单截断策略：保留开头和结尾
         half_length = self.max_context_length // 2 - 50
-        truncated = text[:half_length] + "\n\n... [内容已截断] ...\n\n" + text[-half_length:]
+        truncated = (
+            text[:half_length] + "\n\n... [内容已截断] ...\n\n" + text[-half_length:]
+        )
 
         logger.info(f"上下文已截断: {len(text)} -> {len(truncated)} 字符")
         return truncated

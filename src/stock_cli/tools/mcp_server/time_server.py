@@ -11,10 +11,12 @@ for name in ["mcp", "mcp.server", "mcp.server.fastmcp", "mcp.server.lowlevel"]:
 # Create server
 mcp = FastMCP("Time Server")
 
+
 @mcp.tool()
 def get_time():
     """Get the current time"""
     return {"current_time": datetime.now().isoformat()}
+
 
 if __name__ == "__main__":
     mcp.run()

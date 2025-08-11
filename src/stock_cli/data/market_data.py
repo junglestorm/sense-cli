@@ -141,7 +141,9 @@ class MarketData:
             return []
 
         try:
-            df = await asyncio.get_event_loop().run_in_executor(None, ak.stock_zh_a_spot_em)
+            df = await asyncio.get_event_loop().run_in_executor(
+                None, ak.stock_zh_a_spot_em
+            )
             hot_data = df.head(20)
 
             data = []
@@ -153,7 +155,7 @@ class MarketData:
                         "最新价": f"{row['最新价']:.2f}",
                         "涨跌额": f"{row['涨跌额']:.2f}",
                         "涨跌幅": f"{row['涨跌幅']:.2f}%",
-                        "成交量": f"{row['成交量']/10000:.0f}万",
+                        "成交量": f"{row['成交量'] / 10000:.0f}万",
                         "换手率": f"{row['换手率']:.2f}%",
                         "量比": f"{row['量比']:.2f}",
                         "市盈率": (
@@ -192,7 +194,9 @@ class MarketData:
             return {}
 
         try:
-            df = await asyncio.get_event_loop().run_in_executor(None, ak.stock_zh_a_spot_em)
+            df = await asyncio.get_event_loop().run_in_executor(
+                None, ak.stock_zh_a_spot_em
+            )
 
             total_stocks = len(df)
             rising = len(df[df["涨跌幅"] > 0])
@@ -211,7 +215,7 @@ class MarketData:
                 "平均涨跌幅": f"{avg_change:.2f}%",
                 "总成交量": f"{total_volume:.2f}亿手",
                 "总成交额": f"{total_amount:.2f}万亿",
-                "上涨比例": f"{rising/total_stocks*100:.1f}%",
+                "上涨比例": f"{rising / total_stocks * 100:.1f}%",
                 "更新时间": dt.datetime.now().strftime("%H:%M:%S"),
             }
 

@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 
 try:
     import akshare as ak
+
     AKSHARE_AVAILABLE = True
 except ImportError:
     AKSHARE_AVAILABLE = False
@@ -53,7 +54,9 @@ class RealStockData:
             print("✅ akshare模块导入成功")
 
             # 获取实时指数数据
-            df = await asyncio.get_event_loop().run_in_executor(None, ak.stock_zh_index_spot_em)
+            df = await asyncio.get_event_loop().run_in_executor(
+                None, ak.stock_zh_index_spot_em
+            )
             print(f"✅ akshare返回{len(df)}条指数数据")
 
             # 筛选主要指数
@@ -116,7 +119,9 @@ class RealStockData:
         try:
             # 获取A股实时数据
             print("🔄 正在获取A股实时数据...")
-            df = await asyncio.get_event_loop().run_in_executor(None, ak.stock_zh_a_spot_em)
+            df = await asyncio.get_event_loop().run_in_executor(
+                None, ak.stock_zh_a_spot_em
+            )
 
             if df is None or df.empty:
                 print("⚠️ akshare返回空数据")
@@ -143,7 +148,9 @@ class RealStockData:
                                 else 0
                             ),
                             "量比": (
-                                float(row["量比"]) if (PANDAS_OK and pd.notnull(row["量比"])) else 0
+                                float(row["量比"])
+                                if (PANDAS_OK and pd.notnull(row["量比"]))
+                                else 0
                             ),
                             "市盈率": (
                                 float(row["市盈率-动态"])
@@ -175,7 +182,11 @@ class RealStockData:
             return []
 
     async def get_kline_data(
-        self, symbol: str, period: str = "daily", start_date: str = None, end_date: str = None
+        self,
+        symbol: str,
+        period: str = "daily",
+        start_date: str = None,
+        end_date: str = None,
     ) -> List[Dict[str, Any]]:
         """获取K线数据"""
         cache_key = f"kline_{symbol}_{period}"
@@ -201,7 +212,13 @@ class RealStockData:
             if symbol.startswith(("60", "000", "002", "300", "688")):
                 # A股股票
                 df = await asyncio.get_event_loop().run_in_executor(
-                    None, ak.stock_zh_a_hist, symbol, period, start_date, end_date, "qfq"
+                    None,
+                    ak.stock_zh_a_hist,
+                    symbol,
+                    period,
+                    start_date,
+                    end_date,
+                    "qfq",
                 )
             else:
                 # 指数

@@ -66,7 +66,7 @@ class Task(BaseModel):
 
 class LLMProviderConfig(BaseModel):
     """LLM提供商配置"""
-    
+
     provider_name: str
     api_key: str
     base_url: str

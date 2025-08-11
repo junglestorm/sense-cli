@@ -62,7 +62,9 @@ class PromptLoader:
                     if child_text:
                         # 根据标签类型添加格式
                         if child.tag in ["system", "context", "instructions"]:
-                            text_parts.append(f"\n<{child.tag}>\n{child_text}\n</{child.tag}>")
+                            text_parts.append(
+                                f"\n<{child.tag}>\n{child_text}\n</{child.tag}>"
+                            )
                         elif child.tag in ["description", "task"]:
                             text_parts.append(f"{child_text}")
                         elif child.tag in ["requirement", "guideline", "note"]:
@@ -125,17 +127,25 @@ class PromptBuilder:
         tools_description = self._format_tools_list(available_tools)
 
         return self.loader.format_prompt(
-            "planner", task_description=task_description, available_tools=tools_description
+            "planner",
+            task_description=task_description,
+            available_tools=tools_description,
         )
 
     def build_react_prompt(
-        self, current_task: str, scratchpad: list, available_tools: list, 
-        memory_context: str = "", conversation_history: list = None
+        self,
+        current_task: str,
+        scratchpad: list,
+        available_tools: list,
+        memory_context: str = "",
+        conversation_history: list = None,
     ) -> str:
         """构建ReAct提示词"""
         tools_description = self._format_tools_list(available_tools)
         scratchpad_text = self._format_scratchpad(scratchpad)
-        conversation_text = self._format_conversation_history(conversation_history or [])
+        conversation_text = self._format_conversation_history(
+            conversation_history or []
+        )
 
         return self.loader.format_prompt(
             "react_core",
@@ -151,13 +161,20 @@ class PromptBuilder:
     ) -> str:
         """构建总结器提示词"""
         return self.loader.format_prompt(
-            "summarizer", raw_content=raw_content, data_source=data_source, data_type=data_type
+            "summarizer",
+            raw_content=raw_content,
+            data_source=data_source,
+            data_type=data_type,
         )
 
-    def build_synthesizer_prompt(self, original_task: str, collected_information: str) -> str:
+    def build_synthesizer_prompt(
+        self, original_task: str, collected_information: str
+    ) -> str:
         """构建综合分析师提示词"""
         return self.loader.format_prompt(
-            "synthesizer", original_task=original_task, collected_information=collected_information
+            "synthesizer",
+            original_task=original_task,
+            collected_information=collected_information,
         )
 
     def _format_tools_list(self, tools: list) -> str:
@@ -187,7 +204,7 @@ class PromptBuilder:
         """格式化对话历史"""
         if not conversation_history:
             return "暂无对话历史"
-        
+
         formatted_history = []
         # 显示所有传入的对话历史（截断逻辑由main.py统一处理）
         for entry in conversation_history:
@@ -197,7 +214,7 @@ class PromptBuilder:
                 formatted_history.append(f"用户: {content}")
             elif role == "assistant":
                 formatted_history.append(f"助手: {content}")
-        
+
         return "\n".join(formatted_history)
 
 

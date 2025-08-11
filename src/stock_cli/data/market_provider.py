@@ -90,9 +90,13 @@ class MarketData:
             print(f"[get_index_data] 获取指数数据异常: {e}")
         return data
 
-    async def _fetch_single_index(self, name: str, code: str) -> Optional[Dict[str, Any]]:
+    async def _fetch_single_index(
+        self, name: str, code: str
+    ) -> Optional[Dict[str, Any]]:
         try:
-            df = await asyncio.get_event_loop().run_in_executor(None, ak.stock_zh_index_spot)
+            df = await asyncio.get_event_loop().run_in_executor(
+                None, ak.stock_zh_index_spot
+            )
             part = df[df["代码"] == code]
             if part.empty:
                 return None
@@ -103,8 +107,8 @@ class MarketData:
                 "最新价": f"{row['最新价']:.2f}",
                 "涨跌额": f"{row['涨跌额']:.2f}",
                 "涨跌幅": f"{row['涨跌幅']:.2f}%",
-                "成交量": f"{row['成交量']/10000:.0f}万手",
-                "成交额": f"{row['成交额']/100000000:.2f}亿",
+                "成交量": f"{row['成交量'] / 10000:.0f}万手",
+                "成交额": f"{row['成交额'] / 100000000:.2f}亿",
                 "振幅": f"{row['振幅']:.2f}%",
                 "最高": f"{row['最高']:.2f}",
                 "最低": f"{row['最低']:.2f}",
@@ -125,7 +129,9 @@ class MarketData:
         if not AK_OK:
             return []
         try:
-            df = await asyncio.get_event_loop().run_in_executor(None, ak.stock_hot_follow_xq)
+            df = await asyncio.get_event_loop().run_in_executor(
+                None, ak.stock_hot_follow_xq
+            )
             hot = df.head(limit)
             data = []
             for _, row in hot.iterrows():
@@ -136,14 +142,16 @@ class MarketData:
                         "最新价": f"{row['最新价']:.2f}",
                         "涨跌额": f"{row['涨跌额']:.2f}",
                         "涨跌幅": f"{row['涨跌幅']:.2f}%",
-                        "成交量": f"{row['成交量']/10000:.0f}万",
+                        "成交量": f"{row['成交量'] / 10000:.0f}万",
                         "换手率": (
                             f"{row['换手率']:.2f}%"
                             if PANDAS_OK and pd.notnull(row["换手率"])
                             else "-"
                         ),
                         "量比": (
-                            f"{row['量比']:.2f}" if PANDAS_OK and pd.notnull(row["量比"]) else "-"
+                            f"{row['量比']:.2f}"
+                            if PANDAS_OK and pd.notnull(row["量比"])
+                            else "-"
                         ),
                     }
                 )
@@ -164,7 +172,9 @@ class MarketData:
         if not AK_OK:
             return {}
         try:
-            df = await asyncio.get_event_loop().run_in_executor(None, ak.stock_zh_a_spot)
+            df = await asyncio.get_event_loop().run_in_executor(
+                None, ak.stock_zh_a_spot
+            )
             total = len(df)
             rising = len(df[df["涨跌幅"] > 0])
             falling = len(df[df["涨跌幅"] < 0])
@@ -176,7 +186,7 @@ class MarketData:
                 "下跌家数": falling,
                 "平盘家数": unchanged,
                 "平均涨跌幅": f"{avg_change:.2f}%",
-                "上涨比例": f"{rising/total*100:.1f}%",
+                "上涨比例": f"{rising / total * 100:.1f}%",
                 "更新时间": dt.datetime.now().strftime("%H:%M:%S"),
             }
             self._set_cache(key, result)
@@ -194,7 +204,9 @@ class MarketData:
         if not AK_OK:
             return []
         try:
-            df = await asyncio.get_event_loop().run_in_executor(None, ak.news_economic_baidu)
+            df = await asyncio.get_event_loop().run_in_executor(
+                None, ak.news_economic_baidu
+            )
             data = []
             for _, row in df.iterrows():
                 data.append(
