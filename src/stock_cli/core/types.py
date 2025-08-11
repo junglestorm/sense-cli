@@ -102,7 +102,7 @@ class MemoryEntry(BaseModel):
 class AgentConfig(BaseModel):
     """Agent配置"""
 
-    max_iterations: int = 20
+    # max_iterations 字段已移除，统一由 Task 控制
     timeout: int = 300
     context_window: int = 8192
     max_memory_results: int = 10

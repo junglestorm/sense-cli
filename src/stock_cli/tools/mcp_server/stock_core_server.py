@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any
 import sys
+import akshare as ak
 from pathlib import Path
 
 # 添加项目路径
@@ -19,8 +20,7 @@ from mcp.server.fastmcp import FastMCP
 from stock_cli.data.market_provider import MarketData
 from stock_cli.data.stock_data import RealStockData
 
-# 配置日志 - 重定向到文件而不是控制台
-log_dir = project_root / "data" / "logs"
+log_dir = project_root / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
 
 # 完全禁用MCP相关的控制台日志输出
@@ -35,15 +35,20 @@ for name in [
     logging.getLogger(name).propagate = False
     logging.getLogger(name).handlers.clear()
 
-logging.basicConfig(
-    level=logging.CRITICAL,  # 只记录严重错误
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.FileHandler(log_dir / "mcp_stock_core.log", encoding="utf-8"),
-    ],
-)
-logger = logging.getLogger(__name__)
-logger.propagate = False
+from logging.handlers import RotatingFileHandler
+
+def setup_logging(log_path: str, level=logging.CRITICAL, max_bytes=5*1024*1024, backup_count=5):
+    handler = RotatingFileHandler(log_path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    handler.setFormatter(formatter)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(level)
+    logger.handlers.clear()
+    logger.addHandler(handler)
+    logger.propagate = False
+    return logger
+
+logger = setup_logging("logs/mcp_stock_core.log")
 
 # 创建MCP服务器
 mcp = FastMCP("Stock Core Server")
@@ -68,7 +73,7 @@ def get_stock_realtime_price(symbol: str) -> Dict[str, Any]:
         logger.info(f"获取股票 {symbol} 实时价格")
 
         # 使用akshare获取实时价格（非东财接口）
-        import akshare as ak
+        
 
         # 尝试获取个股实时行情
         df = ak.stock_zh_a_spot()
@@ -125,7 +130,6 @@ def get_stock_history(
     try:
         logger.info(f"获取股票 {symbol} 历史数据，周期: {period}, 天数: {days}")
 
-        import akshare as ak
 
         # 计算开始日期
         end_date = datetime.now().strftime("%Y%m%d")
@@ -186,36 +190,35 @@ def get_stock_history(
 
 
 @mcp.tool()
-async def get_market_overview() -> Dict[str, Any]:
+def mcp_stock_market_report():
     """
-    获取市场概览信息
-
-    Returns:
-        包含主要指数和市场统计信息的字典
+    获取A股实时行情，生成市场摘要报告（适合LLM输入）
     """
-    try:
-        logger.info("获取市场概览")
+    # 获取实时行情
+    df = ak.stock_zh_a_spot()
+    # 涨幅榜
+    top_gainers = df.sort_values("涨跌幅", ascending=False).head(5)
+    # 跌幅榜
+    top_losers = df.sort_values("涨跌幅", ascending=True).head(5)
+    # 市场指数
+    index_df = ak.stock_zh_index_spot()
+    index_info = index_df[["指数名称", "最新价", "涨跌幅"]].head(3)
 
-        # 使用现有的市场数据提供者
-        indices_data = await market_data.get_major_indices()
-        hot_stocks = await market_data.get_hot_stocks(limit=10)
+    # 组织报告文本
+    report = []
+    report.append(f"【A股市场实时简报】{datetime.now().strftime('%Y-%m-%d %H:%M')}\n")
+    report.append("主要指数：")
+    for _, row in index_info.iterrows():
+        report.append(f"- {row['指数名称']}: {row['最新价']}点，涨跌幅 {row['涨跌幅']}%")
+    report.append("\n涨幅前五：")
+    for _, row in top_gainers.iterrows():
+        report.append(f"- {row['名称']}({row['代码']}): 涨幅 {row['涨跌幅']}%，成交额 {row['成交额']}万")
+    report.append("\n跌幅前五：")
+    for _, row in top_losers.iterrows():
+        report.append(f"- {row['名称']}({row['代码']}): 跌幅 {row['涨跌幅']}%，成交额 {row['成交额']}万")
+    report.append("\n市场简评：今日A股热点板块突出，涨跌分化明显。")
 
-        result = {
-            "success": True,
-            "indices": indices_data,
-            "hot_stocks": hot_stocks,
-            "timestamp": datetime.now().isoformat(),
-        }
-
-        return result
-
-    except Exception as e:
-        logger.error(f"获取市场概览失败: {str(e)}")
-        return {
-            "success": False,
-            "message": f"获取市场概览失败: {str(e)}",
-            "data": None,
-        }
+    return "\n".join(report)
 
 
 @mcp.tool()
@@ -232,7 +235,6 @@ def search_stock_info(keyword: str) -> Dict[str, Any]:
     try:
         logger.info(f"搜索股票: {keyword}")
 
-        import akshare as ak
 
         # 获取所有A股股票列表
         df = ak.stock_zh_a_spot()
@@ -295,7 +297,6 @@ def get_company_profile(symbol: str) -> Dict[str, Any]:
     try:
         logger.info(f"获取公司 {symbol} 基本信息")
 
-        import akshare as ak
 
         # 使用雪球数据获取公司基本信息
         df = ak.stock_individual_basic_info_xq(

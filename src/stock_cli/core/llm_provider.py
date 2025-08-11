@@ -28,16 +28,23 @@ class LLMProvider:
         max_tokens: Optional[int] = None,
         temperature: float = 0.1,
         timeout: int = 120,
+        provider: str = "openai",
     ) -> str:
         """生成文本回复"""
         try:
-            response: ChatCompletion = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_tokens or 1024,
-                temperature=temperature,
-                timeout=timeout,
-            )
+            # 动态选择参数名
+            params = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": temperature,
+                "timeout": timeout,
+            }
+            if provider in ["openai", "aihubmix"]:
+                params["max_completion_tokens"] = max_tokens or 1024
+            else:
+                params["max_tokens"] = max_tokens or 1024
+
+            response: ChatCompletion = await self.client.chat.completions.create(**params)
 
             # 记录使用情况
             if hasattr(response, "usage") and response.usage:
@@ -58,23 +65,33 @@ class LLMProvider:
         max_tokens: Optional[int] = None,
         temperature: float = 0.1,
         timeout: int = 120,
+        provider: str = "openai",
     ) -> AsyncGenerator[str, None]:
         """流式生成文本回复"""
         try:
-            stream = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_tokens or 1024,
-                temperature=temperature,
-                timeout=timeout,
-                stream=True,
-            )
+            params = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": temperature,
+                "timeout": timeout,
+                "stream": True,
+            }
+            if provider in ["openai", "aihubmix"]:
+                params["max_completion_tokens"] = max_tokens or 1024
+            else:
+                params["max_tokens"] = max_tokens or 1024
+
+            stream = await self.client.chat.completions.create(**params)
 
             async for chunk in stream:
                 if chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content
 
         except Exception as e:
+            # 明确区分超时异常
+            if "timeout" in str(e).lower() or isinstance(e, TimeoutError):
+                logger.error("模型调用超时: %s", str(e))
+                raise TimeoutError("模型服务超时，请稍后重试或检查服务商状态。")
             logger.error("Failed to generate stream response: %s", str(e))
             raise
 

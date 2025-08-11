@@ -15,8 +15,7 @@ sys.path.insert(0, str(project_root))
 
 from mcp.server.fastmcp import FastMCP
 
-# 配置日志 - 重定向到文件而不是控制台
-log_dir = Path(__file__).resolve().parents[3] / "data" / "logs"
+log_dir = Path(__file__).resolve().parents[3] / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
 
 # 完全禁用MCP相关的控制台日志输出
@@ -31,15 +30,20 @@ for name in [
     logging.getLogger(name).propagate = False
     logging.getLogger(name).handlers.clear()
 
-logging.basicConfig(
-    level=logging.CRITICAL,  # 只记录严重错误
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.FileHandler(log_dir / "mcp_stock_news.log", encoding="utf-8"),
-    ],
-)
-logger = logging.getLogger(__name__)
-logger.propagate = False
+from logging.handlers import RotatingFileHandler
+
+def setup_logging(log_path: str, level=logging.CRITICAL, max_bytes=5*1024*1024, backup_count=5):
+    handler = RotatingFileHandler(log_path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    handler.setFormatter(formatter)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(level)
+    logger.handlers.clear()
+    logger.addHandler(handler)
+    logger.propagate = False
+    return logger
+
+logger = setup_logging("logs/mcp_stock_news.log")
 
 # 创建MCP服务器
 mcp = FastMCP("Stock News Analysis Server")

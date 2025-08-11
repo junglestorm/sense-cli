@@ -51,40 +51,33 @@ async def ensure_kernel(
         with open(settings_path, "r", encoding="utf-8") as f:
             settings = yaml.safe_load(f)
 
+
         # 获取LLM配置
         llm_settings = settings.get("llm", {})
-
-        # 查找有效的LLM提供商配置
-        valid_providers = [
-            "openai",
-            "deepseek",
-            "ollama",
-            "gemini",
-            "anthropic",
-            "azure",
-            "custom",
-        ]
-        provider_name = None
+        provider_name = llm_settings.get("provider")
         provider_config = None
 
-        # 优先使用deepseek配置，如果没有则使用第一个有效的配置
-        if "deepseek" in llm_settings:
-            config = llm_settings["deepseek"]
+        if provider_name and provider_name in llm_settings:
+            config = llm_settings[provider_name]
             # 检查配置是否完整
             if config.get("api_key") and config.get("base_url") and config.get("model"):
-                provider_name = "deepseek"
                 provider_config = config
         else:
-            # 如果没有deepseek配置，则使用第一个有效的配置
+            # 如果未指定 provider 或配置不完整，则遍历所有 provider，选第一个完整的
+            valid_providers = [
+                "openai",
+                "deepseek",
+                "ollama",
+                "gemini",
+                "anthropic",
+                "azure",
+                "custom",
+                "aihubmix",
+            ]
             for provider in valid_providers:
                 if provider in llm_settings:
                     config = llm_settings[provider]
-                    # 检查配置是否完整
-                    if (
-                        config.get("api_key")
-                        and config.get("base_url")
-                        and config.get("model")
-                    ):
+                    if config.get("api_key") and config.get("base_url") and config.get("model"):
                         provider_name = provider
                         provider_config = config
                         break
@@ -93,7 +86,6 @@ async def ensure_kernel(
                         and config.get("base_url")
                         and config.get("model")
                     ):
-                        # 特殊处理ollama，api_key可以是"ollama"
                         provider_name = provider
                         provider_config = config
                         break

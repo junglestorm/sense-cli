@@ -146,3 +146,7 @@ yarn-error.log*
 *.zip
 *.tar.gz
 *.tgz
+
+# 日志文件夹
+logs/*
+!logs/.gitkeep

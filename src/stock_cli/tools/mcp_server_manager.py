@@ -24,15 +24,20 @@ from mcp.client.session import ClientSession
 from mcp.client.sse import sse_client
 
 # 优化日志配置
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.ERROR)
-if not logger.handlers:
-    handler = logging.FileHandler("data/logs/mcp.log", encoding="utf-8")
-    handler.setFormatter(
-        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    )
+from logging.handlers import RotatingFileHandler
+
+def setup_logging(log_path: str, level=logging.ERROR, max_bytes=5*1024*1024, backup_count=5):
+    handler = RotatingFileHandler(log_path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8")
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    handler.setFormatter(formatter)
+    logger = logging.getLogger(__name__)
+    logger.setLevel(level)
+    logger.handlers.clear()
     logger.addHandler(handler)
-logger.propagate = False
+    logger.propagate = False
+    return logger
+
+logger = setup_logging("logs/mcp.log")
 
 
 class ServerType(Enum):

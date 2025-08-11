@@ -175,7 +175,7 @@ class AgentKernel:
         logger.info(f"开始 ReAct 循环: {task.description[:60]}…")
 
         iteration = 0
-        max_iterations = min(task.max_iterations, self.config.max_iterations)
+        max_iterations = task.max_iterations
         consecutive_invalid = 0
         last_action: Optional[str] = None
 
@@ -264,7 +264,7 @@ class AgentKernel:
                     break
 
         # 超过最大迭代次数
-        logger.warning(f"达到最大迭代次数 {max_iterations}，任务未完成")
+        logger.warning(f"达到最大迭代次数 {task.max_iterations}，任务未完成")
         return "任务结束: 达到迭代/时间限制，部分分析已生成。"
 
     async def _call_llm_with_stream(

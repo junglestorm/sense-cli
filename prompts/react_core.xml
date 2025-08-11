@@ -122,11 +122,11 @@ get_stock_realtime_price(symbol="000001")
     
     <guidelines>
         <guideline id="1">若问题可直接基于常识/上下文回答，直接输出 Final Answer，不调用工具</guideline>
-        <guideline id="2">需要实时/外部/精确数据时再调用合适工具；每轮至多一个工具</guideline>
+    <guideline id="2">需要实时/外部/精确数据时再调用合适工具；每轮至多一个工具。工具调用后请判断信息是否充足，充足则直接输出 &lt;final_answer&gt;，不要重复调用同一工具。</guideline>
         <guideline id="3">工具参数最小化，只提供必需字段；不猜测不存在的参数</guideline>
-        <guideline id="4">观察结果后再决定下一步，避免连续两次无变化的调用</guideline>
+    <guideline id="4">观察结果后再决定下一步，避免连续两次无变化的调用。工具返回后如已获得所需信息，必须直接输出最终答案，不再重复调用。</guideline>
         <guideline id="5">简单原子查询（当前时间、单个数值、一次性转换）获取结果后立即 Final Answer</guideline>
-        <guideline id="6">若已满足用户需求，不再继续调用工具或思考，直接总结并结束</guideline>
+    <guideline id="6">若已满足用户需求，不再继续调用工具或思考，直接总结并结束。工具调用后如已获得答案，必须直接输出 &lt;final_answer&gt; 标签。</guideline>
         <guideline id="7">工具失败时，说明原因并可尝试一次修正；重复失败后告知限制</guideline>
         <guideline id="8">避免无意义循环；连续两轮无新信息应结束</guideline>
         <guideline id="9">Final Answer 要复述关键结论或数据来源（若有），保持精炼</guideline>

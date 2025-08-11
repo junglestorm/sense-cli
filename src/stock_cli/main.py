@@ -82,23 +82,23 @@ session = PromptSession(
 
 def _setup_logging(level: str = "INFO"):
     """设置日志配置，只输出到文件，不输出到控制台"""
-    # 创建日志目录
-    log_dir = Path("data/logs")
+    log_dir = Path("logs")
     log_dir.mkdir(parents=True, exist_ok=True)
 
     # 完全清除现有的日志处理器
-    logging.getLogger().handlers.clear()
+    from logging.handlers import RotatingFileHandler
 
-    # 配置根日志只输出到文件
-    logging.basicConfig(
-        level=logging.ERROR,  # 提高阈值，减少日志输出
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%m/%d/%y %H:%M:%S",
-        handlers=[
-            logging.FileHandler("data/logs/agent.log", encoding="utf-8"),
-        ],
-        force=True,  # 强制重新配置
-    )
+    def setup_logging(log_path: str, level=logging.ERROR, max_bytes=5*1024*1024, backup_count=5):
+        handler = RotatingFileHandler(log_path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8")
+        formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        handler.setFormatter(formatter)
+        root_logger = logging.getLogger()
+        root_logger.setLevel(level)
+        root_logger.handlers.clear()
+        root_logger.addHandler(handler)
+
+    # 初始化主日志
+    setup_logging("logs/app.log")
 
     # 禁用所有可能产生控制台输出的日志
     noisy_loggers = [
