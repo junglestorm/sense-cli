@@ -8,10 +8,24 @@
       "env": {}
     },
     {
-      "name": "stock_core_server",
+      "name": "core_tools_server",
       "type": "stdio",
       "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/stock_core_server.py"],
+      "args": ["src/stock_cli/tools/mcp_server/core_tools.py"],
+      "env": {}
+    },
+    {
+      "name": "stock_fund_tools_server",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/stock_fund_tools.py"],
+      "env": {}
+    },
+    {
+      "name": "stock_info_tools_server",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/stock_info_tools.py"],
       "env": {}
     }
   ]

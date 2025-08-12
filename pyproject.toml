@@ -21,6 +21,7 @@ dependencies = [
     "akshare>=1.17.31",
     "openai>=1.99.6",
     "prompt-toolkit>=3.0.51",
+    "psutil>=7.0.0",
 ]
 
 [project.scripts]
