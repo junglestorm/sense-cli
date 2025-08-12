@@ -96,6 +96,9 @@ class ProgressCallbackAdapter:
             await self.progress_cb(f"[StreamThought]{content}")
         elif chunk_type == "action":
             await self.progress_cb(f"[StreamAction]{content}")
+        elif chunk_type == "observation":
+            # 工具返回结果
+            await self.progress_cb(f"[StreamObservation]{content}")
         elif chunk_type == "final_answer":
             await self.progress_cb(f"[StreamFinalAnswer]{content}")
         elif chunk_type == "final_answer_end":

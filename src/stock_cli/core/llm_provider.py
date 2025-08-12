@@ -1,11 +1,27 @@
-"""
-LLM提供商工厂模块，只支持OpenAI SDK格式
+"""LLM Provider & Factory (OpenAI 兼容)
+
+注意: from __future__ import annotations 必须位于文件最顶部。
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import List, Literal, Union, AsyncGenerator, Dict, Any, Optional
 import logging
-from typing import Dict, Any, Optional, AsyncGenerator
+
+
+@dataclass
+class ChatMessage:
+    """结构化对话消息对象。"""
+    role: Literal["system", "assistant", "tool", "user"]
+    content: str
+
+    def to_dict(self) -> Dict[str, str]:
+        return {"role": self.role, "content": self.content}
+
+# ---------------------------------------------------------------------------
+# LLM Provider
+# ---------------------------------------------------------------------------
 
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletion
@@ -21,6 +37,42 @@ class LLMProvider:
         self.client = client
         self.model = model
         self.last_usage = {}
+
+    # ------------------------------------------------------------------
+    # 高层消息接口（推荐使用）
+    # ------------------------------------------------------------------
+    async def send_messages(
+        self,
+        messages: List[Union[ChatMessage, Dict[str, str]]],
+        *,
+        stream: bool = False,
+        max_tokens: Optional[int] = None,
+        temperature: float = 0.1,
+        timeout: int = 120,
+        provider: str = "openai",
+    ) -> Union[str, AsyncGenerator[str, None]]:
+        """统一的消息发送入口。
+
+        若 stream=True 返回异步生成器；否则返回完整字符串。
+        接受 ChatMessage 或已经是 dict 的消息。
+        """
+        normalized = [m.to_dict() if isinstance(m, ChatMessage) else m for m in messages]
+        if stream:
+            return self.generate_stream(
+                normalized,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                timeout=timeout,
+                provider=provider,
+            )
+        else:
+            return await self.generate(
+                normalized,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                timeout=timeout,
+                provider=provider,
+            )
 
     async def generate(
         self,
