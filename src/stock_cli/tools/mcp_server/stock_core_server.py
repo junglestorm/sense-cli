@@ -166,7 +166,7 @@ def concept_fund_flow(symbol: str) -> Dict[str, Any]:
     获取概念资金流数据，并返回涨跌幅前十的结果。
 
     参数：
-        symbol (str): 接口所需的参数，值为“即时”、“3日排行”等。
+        symbol (str): 接口所需的参数，值为“即时”、“3日排行”、“5日排行”等。
 
     返回：
         dict: 包含成功状态和涨跌幅前十的概念资金流数据。
@@ -175,9 +175,20 @@ def concept_fund_flow(symbol: str) -> Dict[str, Any]:
     try:
         # 调用 akshare 接口获取数据
         data = ak.stock_fund_flow_concept(symbol=symbol)
+
+        # 根据 symbol 确定涨跌幅字段
+        if symbol == "即时":
+            sort_field = "行业-涨跌幅"
+        else:
+            sort_field = "阶段涨跌幅"
+
         # 按涨跌幅排序，取前十
-        top_10 = data.sort_values(by="行业-涨跌幅", ascending=False).head(10)
-        return {"success": True, "data": top_10.to_dict(orient="records"), "timestamp": datetime.now().isoformat()}
+        top_10 = data.sort_values(by=sort_field, ascending=False).head(10)
+        return {
+            "success": True,
+            "data": top_10.to_dict(orient="records"),
+            "timestamp": datetime.now().isoformat()
+        }
     except Exception as e:
         logger.error(f"concept_fund_flow error: {e}")
         return {"success": False, "message": str(e)}
