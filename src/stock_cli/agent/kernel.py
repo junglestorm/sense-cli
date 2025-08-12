@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import time
+import json
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from ..core.context import ContextManager
@@ -22,7 +23,7 @@ from ..core.types import AgentConfig, Task, TaskStatus
 from ..tools.mcp_server_manager import MCPServerManager
 
 # 导入重构后的模块
-from .tool_executor import ToolExecutor
+# ToolExecutor removed; direct MCP calls will be used
 from .events import ReActEvent, ReActEventType, ProgressCallbackAdapter
 from .xml_filter import XMLStreamFilter
 from .human_loop import HumanLoopManager
@@ -57,7 +58,6 @@ class AgentKernel:
         self.config = config
 
         # 初始化重构后的组件
-        self.tool_executor = ToolExecutor()
         self.human_loop_manager = human_loop_manager  # Human-in-the-Loop管理器
 
         # 任务级 token 累积 (在 execute_task 周期内累加)
@@ -66,44 +66,36 @@ class AgentKernel:
             "completion_tokens": 0,
             "total_tokens": 0,
         }
+        # 由流式 XML 过滤器在生成过程中同步填充，避免正则重复解析
+        self._last_action_payload: str = ""
+        self._last_final_answer: str = ""
 
     # =============================
     # Public API
     # =============================
     def _check_completion_from_response(self, response: str) -> bool:
-        """检查响应中是否包含final_answer标签（任务完成标志）"""
-        return (
-            "<final_answer>" in response.lower()
-            and "</final_answer>" in response.lower()
-        )
+        """由流式解析结果判断是否已生成最终答案"""
+        return bool(self._last_final_answer)
 
     def _extract_final_answer(self, response: str) -> str:
-        """从响应中提取final_answer内容"""
+        """返回在流式解析阶段抓取到的最终答案"""
+        return self._last_final_answer.strip() if self._last_final_answer else "任务完成"
 
-        pattern = r"<final_answer>(.*?)</final_answer>"
-        match = re.search(pattern, response, re.DOTALL | re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-        return "任务完成"
-
-    def _extract_action_from_response(self, response: str) -> tuple[str, str]:
-        """从响应中提取action内容，返回(action, action_input)"""
-
-        action_pattern = r"<action>(.*?)</action>"
-        action_match = re.search(action_pattern, response, re.DOTALL | re.IGNORECASE)
-
-        if action_match:
-            action_content = action_match.group(1).strip()
-            # 解析action调用格式: tool_name(param=value)
-            if "(" in action_content and ")" in action_content:
-                action_name = action_content.split("(")[0].strip()
-                params_str = action_content[
-                    action_content.find("(") + 1 : action_content.rfind(")")
-                ]
-                return action_name, params_str
-            else:
-                return action_content, ""
-        return "", ""
+    def _extract_action_from_stream(self) -> tuple[str, Dict[str, Any]]:
+        """从流式解析阶段缓存的 <action> 内容中解析严格 JSON: {"tool":"...","arguments":{...}}"""
+        raw = (self._last_action_payload or "").strip()
+        if not raw:
+            return "", {}
+        # 去除可能的 Markdown 围栏
+        raw = re.sub(r"^```(?:json)?\s*", "", raw, flags=re.IGNORECASE)
+        raw = re.sub(r"\s*```$", "", raw).strip()
+        try:
+            obj = json.loads(raw)
+            if isinstance(obj, dict) and "tool" in obj and isinstance(obj.get("arguments"), dict):
+                return str(obj["tool"]), obj["arguments"]
+        except Exception:
+            return "", {}
+        return "", {}
 
     async def execute_task(
         self,
@@ -224,22 +216,32 @@ class AgentKernel:
                     return final_answer
 
                 # 3. 检查是否需要执行工具
-                action_name, action_input = self._extract_action_from_response(response)
+                action_name, action_args = self._extract_action_from_stream()
                 if action_name:
-                    # 执行工具调用
-                    tool_result = await self.tool_executor.execute(
-                        action_name, action_input
-                    )
-
-                    # 记录工具执行结果
-                    if tool_result.success:
-                        observation = f"工具执行成功: {str(tool_result.result)[:200]}"
-                    else:
-                        observation = f"工具执行失败: {tool_result.error_message}"
+                    # 直接调用 MCP 工具
+                    try:
+                        mgr = await MCPServerManager.get_instance()
+                        result = await mgr.call_tool(action_name, action_args or {})
+                        try:
+                            serialized = json.dumps(result, ensure_ascii=False)
+                        except Exception:
+                            serialized = str(result)
+                        observation = f"工具执行成功: {serialized[:2000]}"
+                        consecutive_invalid = 0
+                    except Exception as e:
+                        error_text = str(e)
+                        observation = f"工具执行失败: {error_text}"
                         consecutive_invalid += 1
 
+                    # 在执行轨迹中记录结构化调用与结果，增加模型对结果的注意力
+                    try:
+                        call_json = json.dumps({"tool": action_name, "arguments": action_args}, ensure_ascii=False)
+                    except Exception:
+                        call_json = f'{{"tool":"{action_name}","arguments":"<unserializable>"}}'
+                    task.scratchpad.append(f"Assistant tool call: {call_json}")
+                    task.scratchpad.append(f"Tool result: {observation}")
                     task.scratchpad.append(
-                        f"Iteration {iteration}: {action_name}({action_input}) -> {observation}"
+                        f"Iteration {iteration}: {action_name}({action_args}) -> {observation}"
                     )
                 else:
                     # 没有工具调用，可能是思考或无效响应
@@ -297,7 +299,38 @@ class AgentKernel:
             memory_context=memory_context,
             conversation_history=conversation_history,
         )
-        messages = [{"role": "user", "content": prompt}]
+        # 组装消息：system 注入严格 JSON 规范与工具 schema，user 放置 ReAct prompt
+        tools_desc: List[str] = []
+        for t in available_tools:
+            try:
+                if hasattr(t, "format_for_llm"):
+                    tools_desc.append(t.format_for_llm())
+                else:
+                    name = getattr(t, "name", "unknown")
+                    desc = getattr(t, "description", "")
+                    tools_desc.append(f"Tool: {name}\nDescription: {desc}\nArguments:\n- (schema unavailable)")
+            except Exception:
+                pass
+        available_names = ", ".join([getattr(t, "name", "unknown") for t in available_tools]) if available_tools else "none"
+
+        system_message = (
+            "Tool use policy:\n"
+            "When you need to use a tool, you must output a JSON object INSIDE the <action> tag and nothing else.\n"
+            'Format: {"tool":"tool-name","arguments":{"arg":"value"}}\n'
+            "Only choose tools from the provided list. Do NOT invent tool names. Exactly ONE action per turn.\n"
+            "If you can answer directly, output <final_answer> without any <action>.\n"
+            "No markdown fences, no extra text. Use valid JSON: double quotes, true/false/null.\n\n"
+            "Available tool names: " + available_names + "\n\n"
+            "可用工具（含参数）：\n" + "\n".join(tools_desc)
+        )
+
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": prompt},
+        ]
+        # 每轮调用前重置由流式解析填充的段落缓存
+        self._last_action_payload = ""
+        self._last_final_answer = ""
 
         # 动态token配置
         base_max = self.config.llm_max_tokens
@@ -338,44 +371,67 @@ class AgentKernel:
         final_header_shown = False
 
         try:
+            action_buf: List[str] = []
+            final_buf: List[str] = []
             async for chunk in self.llm_provider.generate_stream(
                 messages, max_tokens=max_tokens, timeout=int(timeout)
             ):
-                if chunk:
-                    collected.append(chunk)
-
-                    # 使用XML状态机过滤器处理chunk
-                    filtered_content, section_type = xml_filter.process_chunk(chunk)
-
-                    # 根据section类型发射对应的header事件
-                    if section_type == "thought" and not thought_header_shown:
-                        await event_adapter.emit(
-                            ReActEvent(ReActEventType.THOUGHT_HEADER, {})
+                if not chunk:
+                    continue
+                collected.append(chunk)
+    
+                # 使用XML状态机过滤器处理chunk
+                filtered_content, section_type = xml_filter.process_chunk(chunk)
+    
+                # 根据section类型发射对应的header事件
+                if section_type == "thought" and not thought_header_shown:
+                    await event_adapter.emit(
+                        ReActEvent(ReActEventType.THOUGHT_HEADER, {})
+                    )
+                    thought_header_shown = True
+                elif section_type == "action" and not action_header_shown:
+                    await event_adapter.emit(
+                        ReActEvent(ReActEventType.ACTION_HEADER, {})
+                    )
+                    action_header_shown = True
+                elif section_type == "final_answer" and not final_header_shown:
+                    await event_adapter.emit(
+                        ReActEvent(ReActEventType.FINAL_ANSWER, {"content": ""})
+                    )
+                    final_header_shown = True
+    
+                # 同步收集用于后续（非正则）解析的段落内容，由 xml_filter 决定边界
+                if section_type == "action" and filtered_content:
+                    action_buf.append(filtered_content)
+                elif section_type == "final_answer" and filtered_content:
+                    final_buf.append(filtered_content)
+                elif section_type == "action_end":
+                    # action 段闭合，缓存本轮 action 的完整内容，并尽快进入工具调用阶段
+                    self._last_action_payload = "".join(action_buf).strip()
+                    break
+                elif section_type == "final_answer_end":
+                    # final 段闭合，缓存本轮最终答案
+                    self._last_final_answer = "".join(final_buf).strip()
+    
+                # 发射过滤后的内容（包括 thought/action/final 的可见文本）
+                if filtered_content and filtered_content.strip():
+                    await event_adapter.emit(
+                        ReActEvent(
+                            ReActEventType.STREAM_CHUNK,
+                            {
+                                "content": filtered_content,
+                                "type": section_type or "default",
+                            },
                         )
-                        thought_header_shown = True
-                    elif section_type == "action" and not action_header_shown:
-                        await event_adapter.emit(
-                            ReActEvent(ReActEventType.ACTION_HEADER, {})
-                        )
-                        action_header_shown = True
-                    elif section_type == "final_answer" and not final_header_shown:
-                        await event_adapter.emit(
-                            ReActEvent(ReActEventType.FINAL_ANSWER, {"content": ""})
-                        )
-                        final_header_shown = True
-
-                    # 发射过滤后的内容
-                    if filtered_content.strip():
-                        await event_adapter.emit(
-                            ReActEvent(
-                                ReActEventType.STREAM_CHUNK,
-                                {
-                                    "content": filtered_content,
-                                    "type": section_type or "default",
-                                },
-                            )
-                        )
-
+                    )
+    
+            # 若 action 段未被明确结束事件标记，则按已收集内容为准
+            if action_buf and not self._last_action_payload:
+                self._last_action_payload = "".join(action_buf).strip()
+            # 同理，若 final 未在流中明确结束，也保存已收集内容
+            if final_buf and not self._last_final_answer:
+                self._last_final_answer = "".join(final_buf).strip()
+    
             return "".join(collected)
 
         except Exception:
@@ -432,9 +488,9 @@ class AgentKernel:
     async def _handle_context_summary_if_needed(self, task: Task):
         """简化的上下文处理 - 基本的长度检查"""
         # 简单的长度检查，如果scratchpad过长就截取最后几条
-        if len(task.scratchpad) > 20:
+        if len(task.scratchpad) > 40:
             logger.info("截取执行轨迹")
-            task.scratchpad = task.scratchpad[-10:]  # 保留最后10条
+            task.scratchpad = task.scratchpad[-20:]  # 保留最后20条，避免丢失关键信息
 
     # 保留兼容性的综合分析方法（未来可能移除）
     async def _synthesize_results(

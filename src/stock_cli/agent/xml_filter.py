@@ -77,9 +77,11 @@ class XMLStreamFilter:
                             or tag_name == "final_answer"
                             and self.state == FilterState.IN_FINAL
                         ):
-                            # 如果是最终答案结束，标记需要结束横线
+                            # 结束信号：用于通知上层该段落已闭合
                             if tag_name == "final_answer":
                                 section_type = "final_answer_end"
+                            elif tag_name == "action":
+                                section_type = "action_end"
 
                             self.state = FilterState.OUTSIDE
 

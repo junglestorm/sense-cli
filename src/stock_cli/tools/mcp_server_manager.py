@@ -291,23 +291,28 @@ class MCPServerManager:
         self._cache_timestamp = time.time()
 
     def _parse_tools_response(self, tools_response: Any, server_name: str) -> None:
-        """解析工具响应"""
-        for item in tools_response:
-            if isinstance(item, tuple) and len(item) >= 2 and item[0] == "tools":
-                for tool in item[1]:
-                    try:
-                        input_schema = self._extract_input_schema(tool.inputSchema)
-                        cached_tool = CachedTool(
-                            name=tool.name,
-                            description=tool.description,
-                            input_schema=input_schema,
-                            server_name=server_name,
-                        )
-                        self._tool_cache[tool.name] = cached_tool
-                    except Exception as e:
-                        logger.error(
-                            f"解析工具 {getattr(tool, 'name', 'unknown')} 失败: {e}"
-                        )
+        """解析工具响应：仅支持事件流 [("tools", [tool,...]), ...]"""
+        def _process_tool(tool_obj: Any) -> None:
+            try:
+                schema_obj = getattr(tool_obj, "inputSchema", None) or getattr(tool_obj, "input_schema", None) or {}
+                input_schema = self._extract_input_schema(schema_obj)
+                cached_tool = CachedTool(
+                    name=getattr(tool_obj, "name", "unknown"),
+                    description=getattr(tool_obj, "description", ""),
+                    input_schema=input_schema,
+                    server_name=server_name,
+                )
+                self._tool_cache[cached_tool.name] = cached_tool
+            except Exception as e:
+                logger.error(f"解析工具 {getattr(tool_obj, 'name', 'unknown')} 失败: {e}")
+    
+        try:
+            for item in tools_response:
+                if isinstance(item, tuple) and len(item) >= 2 and item[0] == "tools":
+                    for tool in item[1]:
+                        _process_tool(tool)
+        except TypeError:
+            logger.warning('list_tools 返回值不可迭代，期望事件流形式：[("tools", [...]), ...]')
 
     @staticmethod
     def _extract_input_schema(input_schema: Any) -> Dict[str, Any]:

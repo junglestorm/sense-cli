@@ -72,7 +72,7 @@
 </thought>
 
 <action>
-[工具名称]([参数])
+{"tool":"工具名称","arguments":{"参数名":"值"}}
 </action>
 ]]>
             </structure>
@@ -101,7 +101,7 @@
 </thought>
 
 <action>
-get_stock_realtime_price(symbol="000001")
+{"tool":"get_stock_realtime_price","arguments":{"symbol":"000001"}}
 </action>
 ]]>
             </example>
