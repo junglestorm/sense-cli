@@ -15,17 +15,16 @@
       "env": {}
     },
     {
-      "name": "stock_info_tools_server",
+      "name": "stock_concept_tools",
       "type": "stdio",
       "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/stock_info_tools.py"],
+      "args": ["src/stock_cli/tools/mcp_server/stock_concept_tools.py"],
       "env": {}
     },
     {
-      "name": "macro_cnbs_tools_server",
+      "name": "stock_individual_tools",
       "type": "stdio",
-      "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/macro_cnbs_tools.py"],
+      "args": ["src/stock_cli/tools/mcp_server/stock_individual_tools.py"],
       "env": {}
     },
     {

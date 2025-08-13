@@ -11,6 +11,8 @@ from mcp.server.fastmcp import FastMCP
 logger = logging.getLogger(__name__)
 mcp = FastMCP("股票信息工具服务：提供与股票龙虎榜、概念板块等相关的多种查询和分析功能。支持获取个股龙虎榜详情、营业部排行、每日龙虎榜详情、个股上榜统计、营业上榜统计以及机构席位成交明细等数据。")
 
+
+
 @mcp.tool()
 def stock_lhb_stock_detail_em(symbol: str, date: str, flag: str) -> Dict[str, Any]:
     """
@@ -171,6 +173,139 @@ def stock_lhb_jgmx_sina(date: str = None) -> Dict[str, Any]:
         }
     except Exception as e:
         logger.error(f"stock_lhb_jgmx_sina error: {e}")
+        return {"success": False, "message": str(e)}
+
+@mcp.tool()
+def stock_zt_pool_previous_em(date: str) -> Dict[str, Any]:
+    """
+    昨日涨停股池查询。
+    限制: 单次返回指定 date 的昨日涨停股池数据; 该接口只能获取近期的数据。
+
+    参数:
+        date (str): 交易日期, 格式如 '20240415'。
+
+    返回:
+        dict: { success: bool, data: List[Dict], timestamp: str }。
+              data 字段包含列: 序号, 代码, 名称, 涨跌幅(%), 最新价, 涨停价, 成交额, 流通市值, 总市值,
+              换手率(%), 涨速(%), 振幅(%), 昨日封板时间(HHMMSS), 昨日连板数, 涨停统计, 所属行业。
+    """
+    import akshare as ak
+    try:
+        df = ak.stock_zt_pool_previous_em(date=date)
+        # 统一列名处理（若列存在则保持原样，不做重命名，以免 akshare 更新导致错误）
+        records = df.to_dict(orient="records")
+        return {
+            "success": True,
+            "data": records,
+            "timestamp": datetime.now().isoformat(),
+            "meta": {
+                "source": "EastMoney",
+                "date": date,
+                "count": len(records)
+            }
+        }
+    except Exception as e:
+        logger.error(f"stock_zt_pool_previous_em error: {e}")
+        return {"success": False, "message": str(e)}
+
+@mcp.tool()
+def stock_zt_pool_strong_em(date: str) -> Dict[str, Any]:
+    """
+    强势股池查询。
+
+    东方财富网-行情中心-涨停板行情-强势股池。
+    接口: stock_zt_pool_strong_em
+    目标地址: https://quote.eastmoney.com/ztb/detail#type=qsgc
+    限制: 单次返回指定 date 的强势股池数据；该接口只能获取近期的数据。
+
+    参数:
+        date (str): 交易日期, 格式如 '20241009'。
+
+    返回:
+        dict: { success: bool, data: List[Dict], timestamp: str }。
+              data 列示例: 序号, 代码, 名称, 涨跌幅(%), 最新价, 涨停价, 成交额, 流通市值, 总市值,
+              换手率(%), 涨速(%), 是否新高, 量比, 涨停统计, 入选理由, 所属行业。
+    """
+    import akshare as ak
+    try:
+        df = ak.stock_zt_pool_strong_em(date=date)
+        records = df.to_dict(orient="records")
+        return {
+            "success": True,
+            "data": records,
+            "timestamp": datetime.now().isoformat(),
+            "meta": {
+                "source": "EastMoney",
+                "date": date,
+                "count": len(records)
+            }
+        }
+    except Exception as e:
+        logger.error(f"stock_zt_pool_strong_em error: {e}")
+        return {"success": False, "message": str(e)}
+
+@mcp.tool()
+def stock_zt_pool_zbgc_em(date: str) -> Dict[str, Any]:
+    """
+    炸板股池查询。
+
+    东方财富网-行情中心-涨停板行情-炸板股池。
+    接口: stock_zt_pool_zbgc_em
+    目标地址: https://quote.eastmoney.com/ztb/detail#type=zbgc
+    限制: 单次返回指定 date 的炸板股池数据；该接口只能获取近期的数据。
+
+    参数:
+        date (str): 交易日期, 格式如 '20241011'。
+
+    返回:
+        dict: { success: bool, data: List[Dict], timestamp: str }。
+              data 列示例: 序号, 代码, 名称, 涨跌幅(%), 最新价, 涨停价, 成交额, 流通市值, 总市值,
+              换手率(%), 涨速, 首次封板时间(HHMMSS), 炸板次数, 涨停统计, 振幅, 所属行业。
+    """
+    import akshare as ak
+    try:
+        df = ak.stock_zt_pool_zbgc_em(date=date)
+        records = df.to_dict(orient="records")
+        return {
+            "success": True,
+            "data": records,
+            "timestamp": datetime.now().isoformat(),
+            "meta": {"source": "EastMoney", "date": date, "count": len(records)}
+        }
+    except Exception as e:
+        logger.error(f"stock_zt_pool_zbgc_em error: {e}")
+        return {"success": False, "message": str(e)}
+
+@mcp.tool()
+def stock_zt_pool_dtgc_em(date: str) -> Dict[str, Any]:
+    """
+    跌停股池查询。
+
+    东方财富网-行情中心-涨停板行情-跌停股池。
+    接口: stock_zt_pool_dtgc_em
+    目标地址: https://quote.eastmoney.com/ztb/detail#type=dtgc
+    限制: 单次返回指定 date 的跌停股池数据；该接口只能获取近期的数据。
+
+    参数:
+        date (str): 交易日期, 格式如 '20241011'。
+
+    返回:
+        dict: { success: bool, data: List[Dict], timestamp: str }。
+              data 列示例: 序号, 代码, 名称, 涨跌幅(%), 最新价, 成交额, 流通市值, 总市值, 动态市盈率,
+              换手率(%), 封单资金, 最后封板时间(HHMMSS), 板上成交额, 连续跌停, 开板次数, 所属行业。
+    """
+    import akshare as ak
+    try:
+        df = ak.stock_zt_pool_dtgc_em(date=date)
+        records = df.to_dict(orient="records")
+        return {
+            "success": True,
+            "data": records,
+            "timestamp": datetime.now().isoformat(),
+            "meta": {"source": "EastMoney", "date": date, "count": len(records)}
+        }
+    except Exception as e:
+        logger.error(f"stock_zt_pool_dtgc_em error: {e}")
         return {"success": False, "message": str(e)}
 
 if __name__ == "__main__":
