@@ -15,17 +15,31 @@
       "env": {}
     },
     {
-      "name": "stock_fund_tools_server",
-      "type": "stdio",
-      "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/stock_fund_tools.py"],
-      "env": {}
-    },
-    {
       "name": "stock_info_tools_server",
       "type": "stdio",
       "command": "python",
       "args": ["src/stock_cli/tools/mcp_server/stock_info_tools.py"],
+      "env": {}
+    },
+    {
+      "name": "macro_cnbs_tools_server",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/macro_cnbs_tools.py"],
+      "env": {}
+    },
+    {
+      "name": "stock_changes_tools_server",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/stock_changes_tools.py"],
+      "env": {}
+    },
+    {
+      "name": "stock_leaderboard_tools_server",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/stock_leaderboard_tools.py"],
       "env": {}
     }
   ]

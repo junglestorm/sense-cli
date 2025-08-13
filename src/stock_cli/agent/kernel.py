@@ -146,7 +146,7 @@ class AgentKernel:
             # 单次模型调用（带流式解析）
             await self._reset_stream_markers()
             response_text = await self._call_llm_with_stream(
-                task, context, iteration, total_start, total_timeout, stream, event_adapter, post_tool_hint=False
+                task, context, iteration, total_start, total_timeout, stream, event_adapter, post_tool_hint=True
             )
 
             # 情况 A: 已输出 final_answer

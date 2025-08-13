@@ -35,22 +35,28 @@ def stock_main_business(symbol: str) -> Dict[str, Any]:
         return {"success": False, "message": str(e)}
 
 @mcp.tool()
-def stock_hot_keyword(symbol: str) -> Dict[str, Any]:
+def stock_hot_keyword(symbols: list) -> Dict[str, Any]:
     """
-    获取指定股票代码的热门关键词数据。
+    获取指定股票代码列表的热门关键词数据。
 
     参数：
-        symbol (str): 股票代码，例如“SZ000665”。
+        symbols (list): 股票代码列表，例如["SZ000665", "SH600519"]，股票代码必须带有SZ/SH一类的交易所缩写标志才能返回正确结果。
 
     返回：
-        dict: 包含成功状态和热门关键词数据。
+        dict: 包含成功状态和每只股票的热门关键词数据。
     """
     import akshare as ak
+    results = []
     try:
-        data = ak.stock_hot_keyword_em(symbol=symbol)
+        for symbol in symbols:
+            data = ak.stock_hot_keyword_em(symbol=symbol)
+            results.append({
+                "symbol": symbol,
+                "data": data.to_dict(orient="records")
+            })
         return {
             "success": True,
-            "data": data.to_dict(orient="records"),
+            "data": results,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
@@ -58,22 +64,28 @@ def stock_hot_keyword(symbol: str) -> Dict[str, Any]:
         return {"success": False, "message": str(e)}
 
 @mcp.tool()
-def stock_bid_ask(symbol: str) -> Dict[str, Any]:
+def stock_bid_ask(symbols: list) -> Dict[str, Any]:
     """
-    获取指定股票的行情报价数据。
+    获取指定股票列表的行情报价数据。
 
     参数：
-        symbol (str): 股票代码，例如“000001”。
+        symbols (list): 股票代码列表，例如["000001", "000002"]。
 
     返回：
-        dict: 包含成功状态和行情报价数据。
+        dict: 包含成功状态和每只股票的行情报价数据。
     """
     import akshare as ak
+    results = []
     try:
-        data = ak.stock_bid_ask_em(symbol=symbol)
+        for symbol in symbols:
+            data = ak.stock_bid_ask_em(symbol=symbol)
+            results.append({
+                "symbol": symbol,
+                "data": data.to_dict(orient="records")
+            })
         return {
             "success": True,
-            "data": data.to_dict(orient="records"),
+            "data": results,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
@@ -81,22 +93,28 @@ def stock_bid_ask(symbol: str) -> Dict[str, Any]:
         return {"success": False, "message": str(e)}
 
 @mcp.tool()
-def stock_board_concept_info(symbol: str) -> Dict[str, Any]:
+def stock_board_concept_info(symbols: list) -> Dict[str, Any]:
     """
-    获取同花顺概念板块简介数据。
+    获取同花顺指定概念板块列表的简介数据。
 
     参数：
-        symbol (str): 概念名称，例如“阿里巴巴概念”。
+        symbols (list): 概念名称列表，例如["阿里巴巴概念", "新能源概念"]。
 
     返回：
-        dict: 包含成功状态和概念板块简介数据。
+        dict: 包含成功状态和每个概念板块的简介数据。
     """
     import akshare as ak
+    results = []
     try:
-        data = ak.stock_board_concept_info_ths(symbol=symbol)
+        for symbol in symbols:
+            data = ak.stock_board_concept_info_ths(symbol=symbol)
+            results.append({
+                "symbol": symbol,
+                "data": data.to_dict(orient="records")
+            })
         return {
             "success": True,
-            "data": data.to_dict(orient="records"),
+            "data": results,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
