@@ -122,11 +122,20 @@ class AgentKernel:
         total_timeout: float,
         stream: bool = False,
     ) -> str:
-        logger.info("开始 ReAct 循环: %s", task.description[:80])
-        iteration = 0
-        max_iterations = task.max_iterations
+        """精简版 ReAct 循环：每次迭代仅一次模型调用
 
-        while iteration < max_iterations:
+        逻辑：
+        1. 流式获取模型输出，XML 解析器捕获 <action> 或 <final_answer>
+        2. 若得到 <final_answer> -> 返回
+        3. 若得到 <action> JSON -> 调用工具，把结果注入对话后进入下一迭代
+        4. 若什么都没有 -> 视为直接回答（fallback）返回
+        不再存在“同一迭代第二次调用”与复杂兜底。
+        """
+        logger.info("开始精简循环: %s", task.description[:80])
+        iteration = 0
+        max_iter = task.max_iterations
+
+        while iteration < max_iter:
             if time.time() - total_start > total_timeout:
                 logger.warning("达到总体超时限制，提前终止")
                 break
@@ -134,15 +143,15 @@ class AgentKernel:
             task.current_iteration = iteration
             await event_adapter.emit(ReActEvent(ReActEventType.ITERATION_START, {"iteration": iteration}))
 
-            # 1. 第一次模型调用（可能给出 action 或 直接 final_answer）
+            # 单次模型调用（带流式解析）
             await self._reset_stream_markers()
             response_text = await self._call_llm_with_stream(
                 task, context, iteration, total_start, total_timeout, stream, event_adapter, post_tool_hint=False
             )
 
+            # 情况 A: 已输出 final_answer
             if self._last_final_answer:
                 final_answer = self._last_final_answer.strip()
-                # 将 final_answer 写入 assistant 历史
                 task.context['chat_messages'].append({
                     "role": "assistant",
                     "content": f"<final_answer>{final_answer}</final_answer>"
@@ -150,70 +159,38 @@ class AgentKernel:
                 await event_adapter.emit(
                     ReActEvent(ReActEventType.STREAM_CHUNK, {"content": "", "type": "final_answer_end"})
                 )
-                task.scratchpad.append(f"Iteration {iteration}: 直接完成")
+                task.scratchpad.append(f"Iteration {iteration}: 完成")
                 return final_answer
 
+            # 情况 B: 解析到 action
             action_name, action_args = self._parse_action_json(self._last_action_payload)
-            if not action_name:
-                # 没有 action 也没有 final_answer -> 视为模型直接回答但未包裹 final 标签，兜底
-                fallback = self._extract_fallback_final(response_text)
-                await event_adapter.emit(
-                    ReActEvent(ReActEventType.STREAM_CHUNK, {"content": "", "type": "final_answer_end"})
-                )
-                task.scratchpad.append(f"Iteration {iteration}: Fallback 完成")
-                return fallback
-
-            # 2. 执行工具
-            observation_text = await self._run_tool_and_record(
-                task, action_name, action_args, event_adapter, iteration
-            )
-
-            # 3. 第二次模型调用（同一迭代内），带 post-tool hint
-            await self._reset_stream_markers()
-            response2 = await self._call_llm_with_stream(
-                task, context, iteration, total_start, total_timeout, stream, event_adapter, post_tool_hint=True
-            )
-
-            if self._last_final_answer:
-                final_answer = self._last_final_answer.strip()
-                # 将 final_answer 写入 assistant 历史
-                task.context['chat_messages'].append({
-                    "role": "assistant",
-                    "content": f"<final_answer>{final_answer}</final_answer>"
-                })
-                await event_adapter.emit(
-                    ReActEvent(ReActEventType.STREAM_CHUNK, {"content": "", "type": "final_answer_end"})
-                )
-                task.scratchpad.append(
-                    f"Iteration {iteration}: 工具后完成 ({action_name})"
-                )
-                return final_answer
-
-            # 若仍然只是新的 action，则进入下一轮（下一个 while 迭代）
-            next_action_name, next_action_args = self._parse_action_json(self._last_action_payload)
-            if next_action_name:
-                task.scratchpad.append(
-                    f"Iteration {iteration}: 链式继续 -> {next_action_name}({next_action_args})"
-                )
+            if action_name:
+                await self._run_tool_and_record(task, action_name, action_args, event_adapter, iteration)
                 await self._handle_context_summary_if_needed(task)
-                continue
+                continue  # 进入下一轮迭代
 
-            # 二次仍无 final_answer，无动作：兜底把模型输出作为最终答案
-            fallback2 = self._extract_fallback_final(response2)
-            # 将 fallback final_answer 写入 assistant 历史
+            # 情况 C: 既没有 final 也没有 action -> 直接把模型原文当答案
+            fallback_raw = self._extract_fallback_final(response_text)
+            # 记录模型原文（不包裹 final 标签）
             task.context['chat_messages'].append({
                 "role": "assistant",
-                "content": f"<final_answer>{fallback2}</final_answer>"
+                "content": fallback_raw
             })
-            await event_adapter.emit(
-                ReActEvent(ReActEventType.STREAM_CHUNK, {"content": "", "type": "final_answer_end"})
-            )
-            task.scratchpad.append(
-                f"Iteration {iteration}: 二次回合兜底完成 (tool={action_name})"
-            )
-            return fallback2
+            # 注入提示，指导其规范输出 action 或 final_answer
+            task.context['chat_messages'].append({
+                "role": "user",
+                "content": (
+                    "上一次输出未提供 <action> 或 <final_answer>。请按策略：\n"
+                    "1) 若需要调用工具：输出 <action>{\"tool\":\"name\",\"arguments\":{...}}</action>\n"
+                    "2) 若可以直接回答：输出 <final_answer>答案内容</final_answer>\n"
+                    "不要再输出其它说明文字。"
+                )
+            })
+            task.scratchpad.append(f"Iteration {iteration}: 无标签 -> 反馈再试")
+            await self._handle_context_summary_if_needed(task)
+            continue
 
-        logger.warning("达到最大迭代次数 %d 未完成", task.max_iterations)
+        logger.warning("达到最大迭代次数 %d 未完成", max_iter)
         return "任务结束: 达到迭代/时间限制。"
 
     # ---------------- 消息与模型调用 ----------------
@@ -351,7 +328,9 @@ class AgentKernel:
                     self._last_action_payload = "".join(action_buf).strip()
                     break  # 早停：去执行工具
                 elif section == "final_answer_end":
+                    # 捕获最终答案并提前结束流，避免继续等待无用 token 造成延迟
                     self._last_final_answer = "".join(final_buf).strip()
+                    break
 
                 if filtered and filtered.strip():
                     await event_adapter.emit(
