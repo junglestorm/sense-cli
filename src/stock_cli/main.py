@@ -11,21 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
-import sys
-import signal
-from typing import Optional, List, Dict, Any
+from typing import Optional
 from pathlib import Path
 
 import typer
 from rich import print
 from rich.panel import Panel
 from rich.console import Console
-import yaml
-from pyfiglet import Figlet
-from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
-from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 
 from .agent.runtime import (
     ensure_kernel,
@@ -34,16 +26,23 @@ from .agent.runtime import (
     get_kernel,
 )
 from .tools.mcp_server_manager import MCPServerManager
-from .core.types import TaskPriority, TriggerEvent
+from .core.app_state import app_state
 
-import yaml
-from croniter import croniter
-from datetime import datetime, timezone
+# 导入新创建的模块
+from .core.signal_manager import SignalManager
+from .core.cli_handler import CLICommandHandler
+from .core.cli_session import CLISessionManager
+from .agent.task_executor import TaskExecutor
 
 app = typer.Typer(add_completion=False, help="Stock Agent CLI - AI驱动的股票分析工具")
 console = Console()
 
 __version__ = "1.0.0"
+
+# 初始化组件
+signal_manager = SignalManager()
+cli_handler = CLICommandHandler()
+cli_session = CLISessionManager()
 
 
 @app.command()
@@ -74,20 +73,6 @@ def main_callback(
         asyncio.run(
             _interactive(None, None, False, True, False, False, False)
         )  # 默认启用 verbose
-
-
-# 全局变量用于存储当前运行的任务
-_current_task: Optional[asyncio.Task] = None
-_interrupt_requested: bool = False
-
-# 全局变量用于存储持久的对话上下文
-_persistent_context: Dict[str, Any] = {}
-
-# 创建PromptSession实例以支持中文输入
-session = PromptSession(
-    history=FileHistory("data/history.txt"),
-    auto_suggest=AutoSuggestFromHistory(),
-)
 
 
 def _setup_logging(level: str = "INFO"):
@@ -147,6 +132,7 @@ def _check_llm_config() -> bool:
         return False
 
     try:
+        import yaml
         with open(settings_path, "r", encoding="utf-8") as f:
             settings = yaml.safe_load(f) or {}
 
@@ -188,85 +174,6 @@ def _check_llm_config() -> bool:
         return False
 
 
-def _print_banner(model: str, mode: str):
-    # 仅在 verbose 模式调用
-    line = f"model={model} mode={mode}"
-    console.print(f"[dim]{line}[/dim]")
-
-
-def _format_reasoning(lines: List[str]) -> List[str]:
-    out: List[str] = []
-    for ln in lines:
-        if ln.startswith("[Agent]"):
-            out.append(f"[cyan]> {ln.replace('[Agent]', '').strip()}[/cyan]")
-        elif ln.startswith("[ReAct]"):
-            core = ln.replace("[ReAct]", "").strip()
-            out.append(f"[dim]• {core}[/dim]")
-    return out
-
-
-def _show_logo():
-    """显示专业风格的logo"""
-    f = Figlet(font="slant", width=120)
-    logo_text = f.renderText("Stock Agent CLI")
-    console.print(f"[bold blue]{logo_text}[/bold blue]")
-    console.print(
-        "[green]AI-Powered Stock Analysis Tool powered by ReAct Architecture[/green]\n"
-    )
-
-
-def _show_help():
-    """显示帮助信息"""
-    help_text = f"""
-[bold blue]Stock Agent CLI v{__version__} - 帮助[/bold blue]
-
-[yellow]基本用法:[/yellow]
-  直接输入问题与AI对话，所有模式都会显示AI的思考过程
-
-[yellow]中断功能:[/yellow]
-  在任何模式下，当 AI 正在思考或生成答案时：
-  • 按 Ctrl+C 可以中断当前任务
-  • 中断后可以立即输入新的问题
-  
-[yellow]特殊命令:[/yellow]
-  /help, /h      - 显示此帮助信息
-  /tools         - 列出可用工具
-  /status        - 显示系统状态  
-  /clear         - 清屏
-  /version       - 显示版本信息
-  /quit, /exit   - 退出程序
-
-[yellow]示例问题:[/yellow]
-  分析一下阿里巴巴的股价走势
-  帮我查找最近的股市新闻
-  比较一下腾讯和阿里巴巴的财务数据
-
-[yellow]命令行选项:[/yellow]
-  --help         - 显示命令帮助
-  --version, -V  - 显示版本信息
-  --debug, -d    - 显示调试信息
-  --no-color     - 禁用彩色输出
-"""
-    console.print(help_text.strip())
-
-
-def _show_status():
-    """显示系统状态"""
-    try:
-        model = current_model()
-        status = "Active" if model else "Check configuration"
-        model_name = model or "Check configuration"
-
-        status_text = f"""
-Status: {status}
-Model: {model_name}
-Services: Running
-"""
-        console.print(status_text.strip())
-    except Exception:
-        console.print("Status: Unable to determine")
-
-
 async def _show_tools():
     """显示当前可用的MCP工具"""
     try:
@@ -294,160 +201,6 @@ async def _cleanup_mcp():
         pass
 
 
-def _signal_handler(signum, frame):
-    """信号处理函数，用于处理 Ctrl+C"""
-    global _interrupt_requested, _current_task
-
-    if _current_task and not _current_task.done():
-        console.print("\n[yellow]🛑 收到中断信号，正在停止当前任务...[/yellow]")
-        _interrupt_requested = True
-        _current_task.cancel()
-    else:
-        # 如果没有正在运行的任务，直接退出
-        console.print("\n[red]Exiting...[/red]")
-        sys.exit(0)
-
-
-def _setup_signal_handlers():
-    """设置信号处理器"""
-    signal.signal(signal.SIGINT, _signal_handler)  # Ctrl+C
-
-
-async def _run_agent_with_interrupt(
-    question: str,
-    *,
-    stream: bool = True,
-    capture_steps: bool = False,
-    minimal: bool = False,
-    enable_interrupt: bool = False,
-    use_persistent_context: bool = False,
-) -> dict:
-    """运行单个 Agent 任务并返回结果/推理摘要，支持运行时中断。"""
-    global _current_task, _interrupt_requested, _persistent_context
-
-    # 重置中断标志
-    _interrupt_requested = False
-
-    kernel = await ensure_kernel()
-    start_t = time.time()
-    progress_lines: List[str] = []
-
-    # 定义进度回调函数
-    async def on_progress(chunk: str):
-        # 检查是否收到中断请求
-        if _interrupt_requested:
-            raise asyncio.CancelledError("用户中断")
-
-        if chunk.startswith("[Stream]"):
-            text = chunk.replace("[Stream]", "")
-            # 使用print直接输出，避免Rich的潜在截断问题
-            print(text, end="", flush=True)
-        elif not minimal and chunk.startswith("[StreamThinking]"):
-            text = chunk.replace("[StreamThinking]", "")
-            console.print(f"[dim]{text}[/dim]", end="", highlight=False)
-        elif not minimal and chunk.startswith("[StreamAction]"):
-            text = chunk.replace("[StreamAction]", "")
-            console.print(f"[dim]{text}[/dim]", end="")
-        elif not minimal and chunk.startswith("[ThinkingHeader]"):
-            console.print("\n[dim]💭 thinking: [/dim]", end="")
-        elif not minimal and chunk.startswith("[ActionHeader]"):
-            console.print("\n[dim]⚡ action: [/dim]", end="")
-        elif not minimal and chunk.startswith("[FinalAnswerHeader]"):
-            # 显示最终答案标题和上方横线
-            title = "✅ 最终答案"
-            console.print(f"\n[bold green]{title}[/bold green]")
-            console.print("─" * 50)
-        elif not minimal and chunk.startswith("[StreamFinalAnswer]"):
-            text = chunk.replace("[StreamFinalAnswer]", "")
-            # 最终答案使用正常颜色显示，不用dim
-            print(text, end="", flush=True)
-        elif not minimal and chunk.startswith("[FinalAnswerEnd]"):
-            # 最终答案结束，显示下方横线
-            console.print(f"\n{'─' * 50}")
-        elif not minimal and chunk.startswith("[StreamThinking]"):
-            text = chunk.replace("[StreamThinking]", "")
-            console.print(f"[dim]{text}[/dim]", end="")
-        elif not minimal and chunk.startswith("[Thinking]"):
-            console.print(
-                f"\n[dim]💭 thinking: {chunk.replace('[Thinking]', '').strip()}[/dim]"
-            )
-        elif not minimal and chunk.startswith("[Action]"):
-            console.print(
-                f"\n[dim]⚡ action: {chunk.replace('[Action]', '').strip()}[/dim]"
-            )
-        # 过滤掉原始的ReAct关键词
-        elif not minimal and chunk.strip() in ["Action", "Thought", "Final Answer"]:
-            pass  # 忽略这些原始关键词
-        if capture_steps and (
-            chunk.startswith("[Thinking]") or chunk.startswith("[Action]")
-        ):
-            progress_lines.append(chunk)
-
-    from .core.types import Task
-
-    # 根据模式决定使用什么上下文
-    if use_persistent_context:
-        # chat 模式：使用持久上下文
-        if "conversation_history" not in _persistent_context:
-            _persistent_context["conversation_history"] = []
-
-        # 将当前问题添加到对话历史
-        _persistent_context["conversation_history"].append(
-            {"role": "user", "content": question}
-        )
-
-        task = Task(description=question, context=_persistent_context)
-    else:
-        # ask 模式：使用空上下文
-        task = Task(description=question, context={})
-
-    # 创建 agent 执行任务
-    _current_task = asyncio.create_task(
-        kernel.execute_task(task, progress_cb=on_progress, stream=stream)
-    )
-
-    try:
-        # 等待任务完成
-        answer = await _current_task
-
-        # 如果使用持久上下文，保存AI的回答到对话历史
-        if use_persistent_context and answer:
-            _persistent_context["conversation_history"].append(
-                {"role": "assistant", "content": answer}
-            )
-
-            # 限制对话历史长度，避免上下文过长
-            max_history_pairs = 8  # 保留最近8轮对话（16条消息）
-            if len(_persistent_context["conversation_history"]) > max_history_pairs * 2:
-                # 保留最新的对话，删除最旧的
-                _persistent_context["conversation_history"] = _persistent_context[
-                    "conversation_history"
-                ][-(max_history_pairs * 2) :]
-
-    except asyncio.CancelledError:
-        if _interrupt_requested:
-            console.print("\n[yellow]🛑 任务已被用户中断[/yellow]")
-        else:
-            console.print("\n[yellow]任务已被停止[/yellow]")
-        raise
-    finally:
-        _current_task = None
-        _interrupt_requested = False
-
-    latency = round(time.time() - start_t, 3)
-    reasoning_fmt = _format_reasoning(progress_lines)
-    token_usage = task.context.get("token_usage") or {}
-
-    return {
-        "answer": answer,
-        "model": current_model(),
-        "latency": latency,
-        "reasoning": reasoning_fmt,
-        "_raw_reasoning": progress_lines,
-        "tokens": token_usage,
-    }
-
-
 async def _interactive(
     model: Optional[str] = None,
     once: Optional[str] = None,
@@ -461,7 +214,7 @@ async def _interactive(
 ):
     """交互式 CLI 主循环"""
     # 设置信号处理器
-    _setup_signal_handlers()
+    signal_manager.setup_signal_handlers()
 
     # 确保 Agent kernel 可用
     try:
@@ -471,12 +224,15 @@ async def _interactive(
         console.print("[red]初始化核心服务失败[/red]")
         raise typer.Exit(1)
 
+    # 创建任务执行器
+    task_executor = TaskExecutor(kernel_ref)
+    
     active_model = current_model() or "unknown"
     if once:
         if verbose:
-            _print_banner(active_model, mode="once")
+            cli_handler.print_banner(active_model, mode="once")
         try:
-            res = await _run_agent_with_interrupt(
+            res = await task_executor.run_agent_with_interrupt(
                 once,
                 stream=not quiet,
                 capture_steps=debug,
@@ -496,21 +252,18 @@ async def _interactive(
 
     # 进入交互循环
     if verbose:
-        _print_banner(active_model, mode="chat")
+        cli_handler.print_banner(active_model, mode="chat")
 
     # 显示欢迎信息和logo
     console.clear()
-    _show_logo()
+    cli_handler.show_logo()
     console.print("[bold green]Welcome to Stock Agent CLI![/bold green]")
     console.print("[dim]Type /help for available commands, /quit to exit[/dim]\n")
 
     try:
         while True:
             try:
-                user_input = await session.prompt_async(
-                    "> ",
-                    enable_history_search=True,
-                )
+                user_input = await cli_session.prompt_user()
             except (EOFError, KeyboardInterrupt):
                 console.print("\n[red]Exiting...[/red]")
                 break
@@ -526,14 +279,14 @@ async def _interactive(
                 await _show_tools()
                 continue
             elif cmd == "/status":
-                _show_status()
+                cli_handler.show_status(active_model)
                 continue
             elif cmd in {"/help", "/h"}:
-                _show_help()
+                cli_handler.show_help(__version__)
                 continue
             elif cmd == "/clear":
                 console.clear()
-                _show_logo()
+                cli_handler.show_logo()
                 console.print("[bold green]Welcome to Stock Agent CLI![/bold green]")
                 console.print(
                     "[dim]Type /help for available commands, /quit to exit[/dim]\n"
@@ -546,7 +299,7 @@ async def _interactive(
             console.print(Panel(user_input, title="Question", border_style="cyan"))
             console.print("[dim]💡 提示: 按 Ctrl+C 可以中断当前任务[/dim]")
             try:
-                res = await _run_agent_with_interrupt(
+                res = await task_executor.run_agent_with_interrupt(
                     user_input,
                     stream=not quiet,
                     capture_steps=debug,
@@ -588,7 +341,7 @@ def ask(
 ) -> None:
     """单轮问答模式 - 向AI提出问题并获得答案"""
     # 设置信号处理器
-    _setup_signal_handlers()
+    signal_manager.setup_signal_handlers()
 
     _setup_logging("DEBUG" if debug else "ERROR")
 
@@ -629,7 +382,7 @@ def chat(
 ):
     """进入交互式聊天模式（具有记忆功能）"""
     # 设置信号处理器
-    _setup_signal_handlers()
+    signal_manager.setup_signal_handlers()
     _setup_logging("ERROR")
 
     # 检查并设置LLM配置
@@ -657,21 +410,6 @@ def tools() -> None:
     """列出可用工具"""
     _setup_logging("ERROR")
     asyncio.run(_show_tools())
-
-
-
-
-@app.callback(invoke_without_command=True)
-def main(ctx: typer.Context):
-    """默认进入对话模式"""
-    if ctx.invoked_subcommand is None:
-        # 检查并设置LLM配置
-        if not _check_llm_config():
-            console.print("[red]LLM配置不完整，请配置 config/settings.yaml[/red]")
-            raise typer.Exit(1)
-
-        _setup_logging("ERROR")
-        asyncio.run(_interactive())
 
 
 def main():
