@@ -27,7 +27,12 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 
-from .agent.runtime import ensure_kernel, current_model
+from .agent.runtime import (
+    ensure_kernel,
+    cleanup_kernel,
+    current_model,
+    get_kernel,
+)
 from .tools.mcp_server_manager import MCPServerManager
 from .core.types import TaskPriority, TriggerEvent
 
@@ -458,13 +463,10 @@ async def _interactive(
     # 设置信号处理器
     _setup_signal_handlers()
 
-    # 确保 Agent kernel 可用，启用Human-in-the-Loop（如果需要）
+    # 确保 Agent kernel 可用
     try:
-        await ensure_kernel(
-            enable_human_loop=human_approval,
-            console=console,
-            require_final_approval=confirm,
-        )
+        await ensure_kernel()
+        kernel_ref = get_kernel()  # 获取kernel实例以供后续使用
     except Exception:
         console.print("[red]初始化核心服务失败[/red]")
         raise typer.Exit(1)

@@ -14,7 +14,6 @@ from ..core.types import AgentConfig, Task, TaskStatus
 from ..tools.mcp_server_manager import MCPServerManager
 from .events import ReActEvent, ReActEventType, ProgressCallbackAdapter
 from .xml_filter import XMLStreamFilter
-from .human_loop import HumanLoopManager
 
 logger = logging.getLogger(__name__)
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -37,13 +36,11 @@ class AgentKernel:
         context_manager: ContextManager,
         prompt_builder: PromptBuilder,
         config: AgentConfig,
-        human_loop_manager: Optional[HumanLoopManager] = None,
     ):
         self.llm_provider = llm_provider
         self.context_manager = context_manager
         self.prompt_builder = prompt_builder
         self.config = config
-        self.human_loop_manager = human_loop_manager
         self._token_counters = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         self._last_action_payload: str = ""
         self._last_final_answer: str = ""

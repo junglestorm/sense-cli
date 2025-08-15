@@ -15,7 +15,6 @@ from ..core.context import ContextManager, MemoryManager
 from ..core.prompt_loader import prompt_builder
 from ..core.llm_provider import LLMProviderFactory
 from ..core.types import AgentConfig
-from .human_loop import create_default_human_loop
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +28,7 @@ def current_model() -> Optional[str]:
     return _current_model
 
 
-async def ensure_kernel(
-    enable_human_loop: bool = False,
-    console=None,
-    high_risk_tools: list = None,
-    require_final_approval: bool = False,
-) -> AgentKernel:
+async def ensure_kernel() -> AgentKernel:
     """确保获取AgentKernel实例（懒加载 + 单例）"""
     global _kernel, _current_model
     if _kernel is not None:
@@ -51,19 +45,12 @@ async def ensure_kernel(
         with open(settings_path, "r", encoding="utf-8") as f:
             settings = yaml.safe_load(f)
 
-
         # 获取LLM配置
         llm_settings = settings.get("llm", {})
         provider_name = llm_settings.get("provider")
-        provider_config = None
-
-        if provider_name and provider_name in llm_settings:
-            config = llm_settings[provider_name]
-            # 检查配置是否完整
-            if config.get("api_key") and config.get("base_url") and config.get("model"):
-                provider_config = config
-        else:
-            # 如果未指定 provider 或配置不完整，则遍历所有 provider，选第一个完整的
+        
+        if not provider_name:
+            # 如果未指定 provider，则遍历所有 provider，选第一个有配置的
             valid_providers = [
                 "openai",
                 "deepseek",
@@ -76,22 +63,13 @@ async def ensure_kernel(
             ]
             for provider in valid_providers:
                 if provider in llm_settings:
-                    config = llm_settings[provider]
-                    if config.get("api_key") and config.get("base_url") and config.get("model"):
-                        provider_name = provider
-                        provider_config = config
-                        break
-                    elif (
-                        provider == "ollama"
-                        and config.get("base_url")
-                        and config.get("model")
-                    ):
-                        provider_name = provider
-                        provider_config = config
-                        break
+                    provider_name = provider
+                    break
 
-        if not provider_name or not provider_config:
-            raise RuntimeError("未找到有效的LLM配置，请检查 config/settings.yaml")
+        provider_config = llm_settings.get(provider_name, {}) if provider_name else {}
+        
+        if not provider_config:
+            raise RuntimeError("未找到LLM配置，请检查 config/settings.yaml")
 
         # 创建LLM提供者
         try:
@@ -109,10 +87,6 @@ async def ensure_kernel(
         # 再创建ContextManager
         context_manager = ContextManager(memory_manager)
 
-        # 加载提示词
-        # 由于PromptLoader没有load_all_prompts方法，我们跳过这一步
-        # await prompt_loader.load_all_prompts()
-
         # 创建Agent配置
         agent_config = AgentConfig(
             max_iterations=20,
@@ -123,23 +97,12 @@ async def ensure_kernel(
             ),
         )
 
-        # 创建Human-in-the-Loop管理器（如果启用）
-        human_loop_manager = None
-        if enable_human_loop:
-            human_loop_manager = create_default_human_loop(
-                console=console,
-                high_risk_tools=high_risk_tools,
-                require_final_approval=require_final_approval,
-            )
-            logger.info("Human-in-the-Loop 已启用")
-
         # 创建AgentKernel实例
         _kernel = AgentKernel(
             llm_provider=llm_provider,
             context_manager=context_manager,
             prompt_builder=prompt_builder,
             config=agent_config,
-            human_loop_manager=human_loop_manager,
         )
 
         logger.info("AgentKernel 初始化成功，使用模型: %s", _current_model)
@@ -147,3 +110,19 @@ async def ensure_kernel(
     except Exception as e:
         logger.error("AgentKernel 初始化失败: %s", str(e))
         raise
+
+
+async def cleanup_kernel():
+    """清理AgentKernel实例"""
+    global _kernel
+    if _kernel is not None:
+        # 可以在这里添加任何需要的清理逻辑
+        _kernel = None
+
+
+def get_kernel() -> AgentKernel:
+    """获取当前的AgentKernel实例"""
+    global _kernel
+    if _kernel is None:
+        raise RuntimeError("AgentKernel 尚未初始化")
+    return _kernel
