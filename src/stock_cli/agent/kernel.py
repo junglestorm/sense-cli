@@ -158,27 +158,54 @@ class AgentKernel:
                 task, context, iteration, total_start, total_timeout, stream, event_adapter, post_tool_hint=True
             )
 
-            # 情况 A: 已输出 final_answer
-            if self._last_final_answer:
-                final_answer = self._last_final_answer.strip()
-                task.context['chat_messages'].append({
-                    "role": "assistant",
-                    "content": f"<final_answer>{final_answer}</final_answer>"
-                })
-                await event_adapter.emit(
-                    ReActEvent(ReActEventType.STREAM_CHUNK, {"content": "", "type": "final_answer_end"})
-                )
-                task.scratchpad.append(f"Iteration {iteration}: 完成")
-                return final_answer
+            # 执行相应的处理方法
+            result = await self._handle_final_answer(task, event_adapter, iteration)
+            if result is not None:
+                return result
+                
+            result = await self._handle_action(task, event_adapter, iteration)
+            if result is not None:
+                return result
+                
+            result = await self._handle_fallback(task, event_adapter, iteration, response_text)
+            if result is not None:
+                return result
+                
+            await self._handle_context_summary_if_needed(task)
 
-            # 情况 B: 解析到 action
-            action_name, action_args = self._parse_action_json(self._last_action_payload)
-            if action_name:
-                await self._run_tool_and_record(task, action_name, action_args, event_adapter, iteration)
-                await self._handle_context_summary_if_needed(task)
-                continue  # 进入下一轮迭代
+        logger.warning("达到最大迭代次数 %d 未完成", max_iter)
+        return "任务结束: 达到迭代/时间限制。"
 
-            # 情况 C: 既没有 final 也没有 action -> 直接把模型原文当答案
+    async def _handle_final_answer(self, task: Task, event_adapter: ProgressCallbackAdapter, iteration: int) -> Optional[str]:
+        """处理 final_answer 情况"""
+        if self._last_final_answer:
+            final_answer = self._last_final_answer.strip()
+            task.context['chat_messages'].append({
+                "role": "assistant",
+                "content": f"<final_answer>{final_answer}</final_answer>"
+            })
+            await event_adapter.emit(
+                ReActEvent(ReActEventType.STREAM_CHUNK, {"content": "", "type": "final_answer_end"})
+            )
+            task.scratchpad.append(f"Iteration {iteration}: 完成")
+            return final_answer
+        return None
+
+    async def _handle_action(self, task: Task, event_adapter: ProgressCallbackAdapter, iteration: int) -> Optional[str]:
+        """处理 action 情况"""
+        # 情况 B: 解析到 action
+        action_name, action_args = self._parse_action_json(self._last_action_payload)
+        if action_name and self._last_action_payload:
+            await self._run_tool_and_record(task, action_name, action_args, event_adapter, iteration)
+            await self._handle_context_summary_if_needed(task)
+            return None  # 返回 None 表示继续下一轮迭代
+        return None
+
+    async def _handle_fallback(self, task: Task, event_adapter: ProgressCallbackAdapter, iteration: int, response_text: str) -> Optional[str]:
+        """处理 fallback 情况"""
+        # 情况 C: 既没有 final 也没有 action -> 直接把模型原文当答案
+        action_name, _ = self._parse_action_json(self._last_action_payload)
+        if not self._last_final_answer and not action_name:
             fallback_raw = self._extract_fallback_final(response_text)
             # 记录模型原文（不包裹 final 标签）
             task.context['chat_messages'].append({
@@ -197,10 +224,8 @@ class AgentKernel:
             })
             task.scratchpad.append(f"Iteration {iteration}: 无标签 -> 反馈再试")
             await self._handle_context_summary_if_needed(task)
-            continue
-
-        logger.warning("达到最大迭代次数 %d 未完成", max_iter)
-        return "任务结束: 达到迭代/时间限制。"
+            return None  # 返回 None 表示继续下一轮迭代
+        return None
 
     # ---------------- 消息与模型调用 ----------------
     async def _call_llm_with_stream(
