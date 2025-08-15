@@ -36,7 +36,6 @@ class LLMProvider:
     def __init__(self, client: AsyncOpenAI, model: str):
         self.client = client
         self.model = model
-        self.last_usage = {}
 
     # ------------------------------------------------------------------
     # 高层消息接口（推荐使用）
@@ -97,14 +96,6 @@ class LLMProvider:
                 params["max_tokens"] = max_tokens or 1024
 
             response: ChatCompletion = await self.client.chat.completions.create(**params)
-
-            # 记录使用情况
-            if hasattr(response, "usage") and response.usage:
-                self.last_usage = {
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens,
-                }
 
             return response.choices[0].message.content or ""
         except Exception as e:

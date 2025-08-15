@@ -41,7 +41,6 @@ class AgentKernel:
         self.context_manager = context_manager
         self.prompt_builder = prompt_builder
         self.config = config
-        self._token_counters = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         self._last_action_payload: str = ""
         self._last_final_answer: str = ""
 
@@ -54,7 +53,6 @@ class AgentKernel:
         stream: bool = False,
     ) -> Any:
         task.status = TaskStatus.RUNNING
-        self._token_counters = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         total_start = time.time()
         total_timeout = min(task.timeout or self.config.timeout, self.config.timeout)
         event_adapter = ProgressCallbackAdapter(progress_cb)
@@ -72,7 +70,6 @@ class AgentKernel:
             )
             task.result = result
             task.status = TaskStatus.COMPLETED
-            task.context.setdefault("token_usage", dict(self._token_counters))
 
             # 写入对话历史到文件
             self._write_chat_history_to_file(task)
@@ -151,8 +148,14 @@ class AgentKernel:
 
             # 单次模型调用
             await self._reset_stream_markers()
-            response_text = await self._call_llm_with_stream(
-                task, context, iteration, total_start, total_timeout, stream, event_adapter, post_tool_hint=True
+            
+            # 构建消息并直接调用流式接口
+            messages = await self._build_messages(task, context, post_tool_hint=True)
+            response_text = await self._stream_llm_call(
+                messages, 
+                self.config.llm_max_tokens, 
+                total_timeout - (time.time() - total_start), 
+                event_adapter
             )
 
             # 执行相应的处理方法
@@ -225,34 +228,6 @@ class AgentKernel:
         return None
 
     # ---------------- 消息与模型调用 ----------------
-    async def _call_llm_with_stream(
-        self,
-        task: Task,
-        context: Dict[str, Any],
-        iteration: int,
-        total_start: float,
-        total_timeout: float,
-        stream: bool,
-        event_adapter: ProgressCallbackAdapter,
-        *,
-        post_tool_hint: bool,
-    ) -> str:
-        messages = await self._build_messages(task, context, post_tool_hint=post_tool_hint)
-
-        # token / timeout 动态配置
-        remain_total = total_timeout - (time.time() - total_start)
-        if remain_total <= 1.5:
-            raise TimeoutError("剩余时间不足")
-
-        base_max = self.config.llm_max_tokens
-        dyn_tokens = min(1024 if iteration == 1 and not task.scratchpad else 512, base_max)
-        base_min = 12.0 if iteration == 1 else 6.0
-        base_cap = 50.0 if iteration == 1 else 25.0
-        iter_timeout = min(max(base_min, remain_total - 1.5), base_cap)
-
-        if stream:
-            return await self._stream_llm_call(messages, dyn_tokens, iter_timeout, event_adapter)
-        return await self._regular_llm_call(messages, dyn_tokens, iter_timeout)
 
     async def _build_messages(self, task: Task, context: Dict[str, Any], *, post_tool_hint: bool) -> List[Dict[str, str]]:
         # 工具列表
@@ -378,32 +353,10 @@ class AgentKernel:
                 self._last_final_answer = "".join(final_buf).strip()
             return "".join(collected)
         except Exception as e:  # noqa: BLE001
-            logger.warning("流式失败回退: %s", e)
-            return await self._regular_llm_call(messages, max_tokens, timeout)
+            logger.warning("流式处理异常: %s", e)
+            # 抛出异常而不是回退到非流式调用
+            raise
 
-    async def _regular_llm_call(self, messages: List[Dict[str, str]], max_tokens: int, timeout: float) -> str:
-        try:
-            resp = await asyncio.wait_for(
-                self.llm_provider.generate(messages, max_tokens=max_tokens, timeout=int(timeout)),
-                timeout=timeout + 3,
-            )
-        except asyncio.TimeoutError as e:  # noqa: PERF203
-            raise TimeoutError("模型调用超时") from e
-
-        usage = getattr(self.llm_provider, "last_usage", None)
-        if usage:
-            for k in self._token_counters:
-                self._token_counters[k] += int(usage.get(k, 0) or 0)
-
-        # 简单解析 final_answer（非流式 fallback）
-        m = re.search(r"<final_answer>([\s\S]*?)</final_answer>", resp)
-        if m:
-            self._last_final_answer = m.group(1).strip()
-        else:
-            m2 = re.search(r"<action>([\s\S]*?)</action>", resp)
-            if m2:
-                self._last_action_payload = m2.group(1).strip()
-        return resp
 
     # ---------------- 工具执行与辅助 ----------------
     async def _run_tool_and_record(
