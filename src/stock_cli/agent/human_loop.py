@@ -44,7 +44,7 @@ class ApprovalContext:
     risk_level: str = "low"
     iteration: int = 0
     scratchpad_history: List[str] = field(default_factory=list)
-    thought: Optional[str] = None
+    thinking: Optional[str] = None
     final_answer: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -154,8 +154,8 @@ class KeywordApprovalStrategy(HumanApprovalStrategy):
         """基于敏感关键词判断"""
         text_to_check = []
 
-        if context.thought:
-            text_to_check.append(context.thought)
+        if context.thinking:
+            text_to_check.append(context.thinking)
         if context.action:
             text_to_check.append(context.action)
         if context.action_input:
@@ -239,8 +239,8 @@ class CLIInteractionHandler(InteractionHandler):
             if ctx.action_input:
                 content.append(f"参数: {ctx.action_input}\n", style="dim")
 
-        if ctx.thought:
-            content.append(f"思考: {ctx.thought[:200]}...\n", style="green")
+        if ctx.thinking:
+            content.append(f"思考: {ctx.thinking[:200]}...\n", style="green")
 
         if ctx.final_answer:
             content.append(f"最终答案: {ctx.final_answer[:200]}...\n", style="magenta")

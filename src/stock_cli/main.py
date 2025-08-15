@@ -337,13 +337,13 @@ async def _run_agent_with_interrupt(
             text = chunk.replace("[Stream]", "")
             # 使用print直接输出，避免Rich的潜在截断问题
             print(text, end="", flush=True)
-        elif not minimal and chunk.startswith("[StreamThought]"):
-            text = chunk.replace("[StreamThought]", "")
+        elif not minimal and chunk.startswith("[StreamThinking]"):
+            text = chunk.replace("[StreamThinking]", "")
             console.print(f"[dim]{text}[/dim]", end="", highlight=False)
         elif not minimal and chunk.startswith("[StreamAction]"):
             text = chunk.replace("[StreamAction]", "")
             console.print(f"[dim]{text}[/dim]", end="")
-        elif not minimal and chunk.startswith("[ThoughtHeader]"):
+        elif not minimal and chunk.startswith("[ThinkingHeader]"):
             console.print("\n[dim]💭 thinking: [/dim]", end="")
         elif not minimal and chunk.startswith("[ActionHeader]"):
             console.print("\n[dim]⚡ action: [/dim]", end="")
@@ -359,12 +359,12 @@ async def _run_agent_with_interrupt(
         elif not minimal and chunk.startswith("[FinalAnswerEnd]"):
             # 最终答案结束，显示下方横线
             console.print(f"\n{'─' * 50}")
-        elif not minimal and chunk.startswith("[StreamThought]"):
-            text = chunk.replace("[StreamThought]", "")
+        elif not minimal and chunk.startswith("[StreamThinking]"):
+            text = chunk.replace("[StreamThinking]", "")
             console.print(f"[dim]{text}[/dim]", end="")
-        elif not minimal and chunk.startswith("[Thought]"):
+        elif not minimal and chunk.startswith("[Thinking]"):
             console.print(
-                f"\n[dim]💭 thinking: {chunk.replace('[Thought]', '').strip()}[/dim]"
+                f"\n[dim]💭 thinking: {chunk.replace('[Thinking]', '').strip()}[/dim]"
             )
         elif not minimal and chunk.startswith("[Action]"):
             console.print(
@@ -374,7 +374,7 @@ async def _run_agent_with_interrupt(
         elif not minimal and chunk.strip() in ["Action", "Thought", "Final Answer"]:
             pass  # 忽略这些原始关键词
         if capture_steps and (
-            chunk.startswith("[Thought]") or chunk.startswith("[Action]")
+            chunk.startswith("[Thinking]") or chunk.startswith("[Action]")
         ):
             progress_lines.append(chunk)
 

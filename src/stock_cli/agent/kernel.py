@@ -110,6 +110,16 @@ class AgentKernel:
             logger.info(f"对话历史已写入文件: {file_path}")
         except Exception as e:
             logger.error(f"写入对话历史失败: {e}")
+    
+    def _output_callback(self,stub:str):
+        "处理模型输出各个字段的回调，包括上下文处理、工具执行或者特殊的task流程处理"
+        match stub:
+            case "action":
+                pass
+            case "final_answer":
+                pass
+            case "thinking":
+                pass
 
     # ---------------- ReAct 主循环 ----------------
     async def _execute_react_loop(
@@ -122,8 +132,7 @@ class AgentKernel:
         total_timeout: float,
         stream: bool = False,
     ) -> str:
-        """精简版 ReAct 循环：每次迭代仅一次模型调用
-
+        """
         逻辑：
         1. 流式获取模型输出，XML 解析器捕获 <action> 或 <final_answer>
         2. 若得到 <final_answer> -> 返回
@@ -143,7 +152,7 @@ class AgentKernel:
             task.current_iteration = iteration
             await event_adapter.emit(ReActEvent(ReActEventType.ITERATION_START, {"iteration": iteration}))
 
-            # 单次模型调用（带流式解析）
+            # 单次模型调用
             await self._reset_stream_markers()
             response_text = await self._call_llm_with_stream(
                 task, context, iteration, total_start, total_timeout, stream, event_adapter, post_tool_hint=True
@@ -309,7 +318,7 @@ class AgentKernel:
                 filtered, section = xml_filter.process_chunk(chunk)
 
                 # header events
-                if section == "thought" and not thought_shown:
+                if section == "thingking" and not thought_shown:
                     await event_adapter.emit(ReActEvent(ReActEventType.THOUGHT_HEADER, {}))
                     thought_shown = True
                 elif section == "action" and not action_shown:
@@ -451,42 +460,5 @@ class AgentKernel:
                 pass
         return response.strip() or "任务完成"
 
-    # 兼容：保留旧接口（尽管重构后内部实现已变化）
-    def _build_step_record(self, parsed_step, raw_response: str) -> str:  # noqa: D401
-        return f"Thought: {getattr(parsed_step, 'thought', '')}\n"
 
-    def _handle_tool_result(
-        self,
-        step_record: str,
-        action: str,
-        action_input: Dict[str, Any],
-        tool_result,
-        task: Task,
-        iteration: int,
-    ) -> str:  # noqa: D401
-        return step_record + f"Action: {action}({action_input})\n"
 
-    async def _handle_context_summary_if_needed(self, task: Task):
-        if len(task.scratchpad) > 60:
-            task.scratchpad = task.scratchpad[-30:]
-        history = task.context.get("chat_messages")
-        if isinstance(history, list) and len(history) > 80:
-            task.context["chat_messages"] = history[-50:]
-
-    # 综合分析（保留兼容）
-    async def _synthesize_results(self, task: Task, results: List[str], context: Dict[str, Any]) -> str:
-        try:
-            merged = "\n\n---\n\n".join([f"分析 {i+1}:\n{r}" for i, r in enumerate(results) if r])
-            prompt = self.prompt_builder.build_synthesizer_prompt(
-                original_task=task.description, collected_information=merged
-            )
-            messages = [{"role": "user", "content": prompt}]
-            resp = await self.llm_provider.generate(messages)
-            usage = getattr(self.llm_provider, "last_usage", None)
-            if usage:
-                for k in self._token_counters:
-                    self._token_counters[k] += int(usage.get(k, 0) or 0)
-            return resp
-        except Exception as e:  # noqa: BLE001
-            logger.warning("综合分析失败: %s", e)
-            return "综合分析失败\n" + "\n".join(results)

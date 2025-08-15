@@ -14,13 +14,13 @@ class ReActEventType(Enum):
     """ReAct事件类型"""
 
     ITERATION_START = "iteration_start"
-    THOUGHT = "thought"
+    THOUGHT = "thinking"
     ACTION = "action"
     OBSERVATION = "observation"
     FINAL_ANSWER = "final_answer"
     ERROR = "error"
     STREAM_CHUNK = "stream_chunk"
-    THOUGHT_HEADER = "thought_header"
+    THOUGHT_HEADER = "thinking_header"
     ACTION_HEADER = "action_header"
 
 
@@ -77,7 +77,7 @@ class ProgressCallbackAdapter:
 
     async def _adapt_thought_header(self, event: ReActEvent):
         """适配思考头部事件"""
-        await self.progress_cb("[ThoughtHeader]")
+        await self.progress_cb("[ThinkingHeader]")
 
     async def _adapt_action_header(self, event: ReActEvent):
         """适配动作头部事件"""
@@ -92,8 +92,8 @@ class ProgressCallbackAdapter:
         chunk_type = event.data.get("type", "default")
         content = event.data.get("content", "")
 
-        if chunk_type == "thought":
-            await self.progress_cb(f"[StreamThought]{content}")
+        if chunk_type == "thinking":
+            await self.progress_cb(f"[StreamThinking]{content}")
         elif chunk_type == "action":
             await self.progress_cb(f"[StreamAction]{content}")
         elif chunk_type == "observation":

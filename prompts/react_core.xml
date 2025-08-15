@@ -30,7 +30,7 @@
         
         <steps>
             <step id="1">
-                <name>Thought (思考)</name>
+                <name>Thingking (思考)</name>
                 <description>分析当前情况，决定下一步行动</description>
                 <actions>
                     <action>评估已有信息是否充足</action>
@@ -67,9 +67,9 @@
             <label>执行中（使用XML标签）：</label>
             <structure>
 <![CDATA[
-<thought>
+<thinking>
 [你的思考过程，分析当前状况和下一步计划]
-</thought>
+</thinking>
 
 <action>
 {"tool":"工具名称","arguments":{"参数名":"值"}}
@@ -82,9 +82,9 @@
             <label>或者如果任务已完成：</label>
             <structure>
 <![CDATA[
-<thought>
+<thinking>
 [最终分析和总结]
-</thought>
+</thinking>
 
 <final_answer>
 [任务完成的最终结论，结构化输出]
@@ -96,9 +96,9 @@
         <examples>
             <example type="with_tool">
 <![CDATA[
-<thought>
+<thinking>
 用户询问某股票的当前价格，我需要调用股票查询工具获取实时数据。
-</thought>
+</thinking>
 
 <action>
 {"tool":"get_stock_realtime_price","arguments":{"symbol":"000001"}}
@@ -108,9 +108,9 @@
             
             <example type="final">
 <![CDATA[
-<thought>
+<thinking>
 根据获取的数据，我已经能够回答用户的问题了。
-</thought>
+</thinking>
 
 <final_answer>
 平安银行（000001）的当前股价为12.34元，较昨日上涨0.56元，涨幅4.77%。
@@ -134,6 +134,6 @@
     </guidelines>
     
     <response_trigger>
-        现在开始：请使用XML格式回应。先输出 &lt;thought&gt; 标签内容。若无需工具即可回答请直接给出 &lt;final_answer&gt;；否则用 &lt;action&gt; 标签调用一个工具。
+        现在开始：请使用XML格式回应。先输出 &lt;thinking&gt; 标签内容。若无需工具即可回答请直接给出 &lt;final_answer&gt;；否则用 &lt;action&gt; 标签调用一个工具。
     </response_trigger>
 </prompt>

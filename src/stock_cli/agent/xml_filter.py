@@ -11,7 +11,7 @@ class FilterState(Enum):
     """过滤器状态"""
 
     OUTSIDE = "outside"  # 在标签外
-    IN_THOUGHT = "in_thought"  # 在<thought>标签内
+    IN_THINKING = "in_thinking"  # 在<thinking>标签内
     IN_ACTION = "in_action"  # 在<action>标签内
     IN_FINAL = "in_final"  # 在<final_answer>标签内
     SKIP_TAG = "skip_tag"  # 跳过标签本身
@@ -58,9 +58,9 @@ class XMLStreamFilter:
 
                     if self._is_opening_tag(self.current_tag):
                         # 开始标签
-                        if tag_name == "thought":
-                            self.state = FilterState.IN_THOUGHT
-                            section_type = "thought"
+                        if tag_name == "thinking":
+                            self.state = FilterState.IN_THINKING
+                            section_type = "thinking"
                         elif tag_name == "action":
                             self.state = FilterState.IN_ACTION
                             section_type = "action"
@@ -70,8 +70,8 @@ class XMLStreamFilter:
                     elif self._is_closing_tag(self.current_tag):
                         # 结束标签
                         if (
-                            tag_name == "thought"
-                            and self.state == FilterState.IN_THOUGHT
+                            tag_name == "thinking"
+                            and self.state == FilterState.IN_THINKING
                             or tag_name == "action"
                             and self.state == FilterState.IN_ACTION
                             or tag_name == "final_answer"
@@ -90,14 +90,14 @@ class XMLStreamFilter:
 
             # 不在标签中，根据当前状态决定是否输出
             if self.state in [
-                FilterState.IN_THOUGHT,
+                FilterState.IN_THINKING,
                 FilterState.IN_ACTION,
                 FilterState.IN_FINAL,
             ]:
                 result += char
                 if not section_type:
-                    if self.state == FilterState.IN_THOUGHT:
-                        section_type = "thought"
+                    if self.state == FilterState.IN_THINKING:
+                        section_type = "thinking"
                     elif self.state == FilterState.IN_ACTION:
                         section_type = "action"
                     elif self.state == FilterState.IN_FINAL:
@@ -122,8 +122,8 @@ class XMLStreamFilter:
 
     def get_current_section(self) -> Optional[str]:
         """获取当前section类型"""
-        if self.state == FilterState.IN_THOUGHT:
-            return "thought"
+        if self.state == FilterState.IN_THINKING:
+            return "thinking"
         elif self.state == FilterState.IN_ACTION:
             return "action"
         elif self.state == FilterState.IN_FINAL:

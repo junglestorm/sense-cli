@@ -81,7 +81,7 @@ class ReActStep(BaseModel):
     """ReAct单步执行记录"""
 
     step: int
-    thought: str
+    thinking: str
     action: Optional[str] = None
     action_input: Optional[Dict[str, Any]] = None
     observation: Optional[str] = None
