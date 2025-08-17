@@ -8,9 +8,10 @@ import re
 import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
-from ..core.context import ContextManager
+from ..core.session import Session
+from ..core.llm_provider import LLMProvider
 from ..core.prompt_loader import PromptBuilder
-from ..core.types import AgentConfig, Task, TaskStatus
+from ..core.types import AgentConfig, Task, TaskStatus,Context,Scratchpad
 from ..tools.mcp_server_manager import MCPServerManager
 from .events import ReActEvent, ReActEventType, ProgressCallbackAdapter
 from .xml_filter import XMLStreamFilter
@@ -18,113 +19,106 @@ from .xml_filter import XMLStreamFilter
 logger = logging.getLogger(__name__)
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-
-TOOL_POLICY = (
-    "Tool use policy:\n"
-    "1. 在 <action> 中输出严格 JSON: {\"tool\": \"name\", \"arguments\": {...}} (双引号, 无多余文本)。\n"
-    "2. 每轮至多一个 <action>；如信息足够可直接输出 <final_answer>。\n"
-    "3. 避免重复调用同一工具+参数；若已有结果请直接利用生成答案。\n"
-    "4. 通常不应超过 3 次工具调用，尽早给出 <final_answer>。\n"
-    "5. 工具失败可做一次合理修正；再失败或无必要继续请直接 <final_answer> 解释。\n"
-)
-
-
 class AgentKernel:
     def __init__(
         self,
-        llm_provider,
-        context_manager: ContextManager,
+        llm_provider: LLMProvider,
+        session: Session,
         prompt_builder: PromptBuilder,
         config: AgentConfig,
     ):
         self.llm_provider = llm_provider
-        self.context_manager = context_manager
+        self.session = session
         self.prompt_builder = prompt_builder
         self.config = config
         self._last_action_payload: str = ""
         self._last_final_answer: str = ""
+        self.scratchpad: list = []
 
     # ---------------- 公共入口 ----------------
     async def execute_task(
         self,
         task: Task,
         progress_cb: Optional[Callable[[str], Awaitable[None] | None]] = None,
-        *,
-        stream: bool = False,
     ) -> Any:
+        logger.debug(f"执行任务: {task.description}")
         task.status = TaskStatus.RUNNING
         total_start = time.time()
         total_timeout = min(task.timeout or self.config.timeout, self.config.timeout)
         event_adapter = ProgressCallbackAdapter(progress_cb)
+        self.scratchpad: list = []  # 直接用 List[Message]
+
+        # 在进入循环前构建 ReAct 提示词（包含 available_tools / scratchpad / qa_history）
         try:
-            context = await self.context_manager.build_context_for_task(task)
-            task.context.setdefault("chat_messages", [])
-            task.context.setdefault("tool_calls_count", 0)
+            try:
+                mgr = await MCPServerManager.get_instance()
+                tools_for_prompt = await mgr.list_tools()
+            except Exception:
+                tools_for_prompt = []
+
+            ctx = self.session.context
+            memory_ctx_content = ""
+            try:
+                if isinstance(ctx.get("memory_context"), dict):
+                    memory_ctx_content = ctx["memory_context"].get("content", "")
+            except Exception:
+                pass
+
+            qa_history = ctx.get("qa_history", [])
+
+            react_prompt_text = self.prompt_builder.build_react_prompt(
+                current_task=task.description,
+                scratchpad=self.scratchpad,
+                available_tools=tools_for_prompt,
+                memory_context=memory_ctx_content,
+                conversation_history=qa_history,
+            )
+            # 将完整的 ReAct 提示作为 system 消息注入，驱动模型严格输出<thinking>/<action>/<final_answer>
+            self.session.context["react_prompt"] = {"role": "system", "content": react_prompt_text}
+        except Exception as e:
+            logger.warning("构建 ReAct 提示失败，将使用默认上下文: %s", e)
+
+        try:
             result = await self._execute_react_loop(
                 task,
-                context,
                 event_adapter=event_adapter,
                 total_start=total_start,
                 total_timeout=total_timeout,
-                stream=stream,
             )
             task.result = result
             task.status = TaskStatus.COMPLETED
-
-            # 写入对话历史到文件
-            self._write_chat_history_to_file(task)
-
+            self._write_qa_history_to_file(task)
             return result
         except Exception as e:  # noqa: BLE001
             task.status = TaskStatus.FAILED
             task.error_message = str(e)
             logger.exception("任务执行失败")
-
-            # 写入对话历史到文件，即使任务失败
-            self._write_chat_history_to_file(task)
-
+            self._write_qa_history_to_file(task)
             raise
 
-    def _write_chat_history_to_file(self, task: Task):
-        """将对话历史写入文件"""
+    def _write_qa_history_to_file(self, task: Task):
+        """将qa_history写入文件"""
         try:
-            chat_history = task.context.get("chat_messages", [])
-            if not chat_history:
+            qa_history = self.session.context.get("qa_history", [])
+            if not qa_history:
                 return
-
-            # 生成文件名，基于任务 ID 或时间戳
             timestamp = time.strftime("%Y%m%d_%H%M%S")
-            file_name = f"chat_history_{task.id or timestamp}.json"
+            file_name = f"qa_history_{task.id or timestamp}.json"
             file_path = os.path.join("logs", file_name)
-
-            # 写入文件
             with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(chat_history, f, ensure_ascii=False, indent=4)
-
-            logger.info(f"对话历史已写入文件: {file_path}")
+                logger.info(f"qa_history已写入文件: {file_path}")
         except Exception as e:
-            logger.error(f"写入对话历史失败: {e}")
+            logger.error(f"写入qa_history失败: {e}")
     
-    def _output_callback(self,stub:str):
-        "处理模型输出各个字段的回调，包括上下文处理、工具执行或者特殊的task流程处理"
-        match stub:
-            case "action":
-                pass
-            case "final_answer":
-                pass
-            case "thinking":
-                pass
+    
 
     # ---------------- ReAct 主循环 ----------------
     async def _execute_react_loop(
         self,
         task: Task,
-        context: Dict[str, Any],
         event_adapter: ProgressCallbackAdapter,
-        *,
         total_start: float,
         total_timeout: float,
-        stream: bool = False,
     ) -> str:
         """
         逻辑：
@@ -146,74 +140,66 @@ class AgentKernel:
             task.current_iteration = iteration
             await event_adapter.emit(ReActEvent(ReActEventType.ITERATION_START, {"iteration": iteration}))
 
-            # 单次模型调用
+            # 每轮开始时重置上次流标记，避免旧的 action/final 干扰本轮分支判断
             await self._reset_stream_markers()
+
+            # 单次模型调用
             
-            # 构建消息并直接调用流式接口
-            messages = await self._build_messages(task, context, post_tool_hint=True)
+            # 由session负责构建LLM输入消息
+            messages = self.session.build_llm_messages(
+                task=task,
+                scratchpad=self.scratchpad,
+            )
+            # 等待模型响应
             response_text = await self._stream_llm_call(
                 messages, 
                 self.config.llm_max_tokens, 
                 total_timeout - (time.time() - total_start), 
                 event_adapter
             )
-
-            # 执行相应的处理方法
-            result = await self._handle_final_answer(task, event_adapter, iteration)
+            # 单一回调处理所有情况（case风格）
+            result = await self._handle_react_iteration_case(event_adapter,  response_text)
             if result is not None:
                 return result
-                
-            result = await self._handle_action(task, event_adapter, iteration)
-            if result is not None:
-                return result
-                
-            result = await self._handle_fallback(task, event_adapter, iteration, response_text)
-            if result is not None:
-                return result
-                
-            await self._handle_context_summary_if_needed(task)
 
         logger.warning("达到最大迭代次数 %d 未完成", max_iter)
         return "任务结束: 达到迭代/时间限制。"
 
-    async def _handle_final_answer(self, task: Task, event_adapter: ProgressCallbackAdapter, iteration: int) -> Optional[str]:
-        """处理 final_answer 情况"""
-        if self._last_final_answer:
+    async def _handle_react_iteration_case(
+        self,
+        event_adapter: ProgressCallbackAdapter,
+        response_text: str
+    ) -> Optional[str]:
+        """case风格处理 final_answer、action、fallback 三种情况"""
+        action_name, action_args = self._parse_action_json(self._last_action_payload)
+        cases = {
+            "final_answer": bool(self._last_final_answer),
+            "action": bool(action_name and self._last_action_payload),
+            "fallback": not self._last_final_answer and not action_name,
+        }
+        # case: final_answer
+        if cases["final_answer"]:
             final_answer = self._last_final_answer.strip()
-            task.context['chat_messages'].append({
-                "role": "assistant",
-                "content": f"<final_answer>{final_answer}</final_answer>"
-            })
+            
+            #最终回答无需添加进scratchpad中，因为循环即将结束
+            self.session.append_qa({"role": "assistant", "content": final_answer})
+    
             await event_adapter.emit(
                 ReActEvent(ReActEventType.STREAM_CHUNK, {"content": "", "type": "final_answer_end"})
             )
-            task.scratchpad.append(f"Iteration {iteration}: 完成")
             return final_answer
-        return None
 
-    async def _handle_action(self, task: Task, event_adapter: ProgressCallbackAdapter, iteration: int) -> Optional[str]:
-        """处理 action 情况"""
-        # 情况 B: 解析到 action
-        action_name, action_args = self._parse_action_json(self._last_action_payload)
-        if action_name and self._last_action_payload:
-            await self._run_tool_and_record(task, action_name, action_args, event_adapter, iteration)
-            await self._handle_context_summary_if_needed(task)
-            return None  # 返回 None 表示继续下一轮迭代
-        return None
+        # case: action
+        if cases["action"]:
+            await self._run_tool_and_record(action_name, action_args, event_adapter)
+            
+            return None  # 继续下一轮
 
-    async def _handle_fallback(self, task: Task, event_adapter: ProgressCallbackAdapter, iteration: int, response_text: str) -> Optional[str]:
-        """处理 fallback 情况"""
-        # 情况 C: 既没有 final 也没有 action -> 直接把模型原文当答案
-        action_name, _ = self._parse_action_json(self._last_action_payload)
-        if not self._last_final_answer and not action_name:
+        # case: fallback
+        if cases["fallback"]:
             fallback_raw = self._extract_fallback_final(response_text)
-            # 记录模型原文（不包裹 final 标签）
-            task.context['chat_messages'].append({
-                "role": "assistant",
-                "content": fallback_raw
-            })
-            # 注入提示，指导其规范输出 action 或 final_answer
-            task.context['chat_messages'].append({
+            self.scratchpad.append({"role": "assistant", "content": fallback_raw})
+            self.scratchpad.append({
                 "role": "user",
                 "content": (
                     "上一次输出未提供 <action> 或 <final_answer>。请按策略：\n"
@@ -222,75 +208,13 @@ class AgentKernel:
                     "不要再输出其它说明文字。"
                 )
             })
-            task.scratchpad.append(f"Iteration {iteration}: 无标签 -> 反馈再试")
-            await self._handle_context_summary_if_needed(task)
-            return None  # 返回 None 表示继续下一轮迭代
+            return None
+
         return None
 
     # ---------------- 消息与模型调用 ----------------
 
-    async def _build_messages(self, task: Task, context: Dict[str, Any], *, post_tool_hint: bool) -> List[Dict[str, str]]:
-        # 工具列表
-        try:
-            mcp_mgr = await MCPServerManager.get_instance()
-            tools = await mcp_mgr.list_tools()
-        except Exception as e:  # noqa: BLE001
-            logger.warning("获取 MCP 工具失败: %s", e)
-            tools = []
-
-        tool_names = [getattr(t, "name", "unknown") for t in tools]
-        tools_desc = []
-        for t in tools:
-            try:
-                if hasattr(t, "format_for_llm"):
-                    tools_desc.append(t.format_for_llm())
-                else:
-                    tools_desc.append(
-                        f"Tool: {getattr(t,'name','unknown')}\nDescription: {getattr(t,'description','')}"
-                    )
-            except Exception:
-                pass
-
-        memory_context = context.get("memory_context", "")
-        conversation_history = context.get("conversation_history", [])
-        react_prompt = self.prompt_builder.build_react_prompt(
-            current_task=task.description,
-            scratchpad=task.scratchpad,
-            available_tools=tools,
-            memory_context=memory_context,
-            conversation_history=conversation_history,
-        )
-
-        post_tool_extra = (
-            "\n先前工具观察结果已在历史中。若已足够回答，请直接输出 <final_answer>。"
-            " 如仍需要额外信息再输出新的 <action>。"
-            if post_tool_hint
-            else ""
-        )
-
-        system_tools = (
-            f"Available tool names: {', '.join(tool_names) if tool_names else 'none'}\n\n" +
-            "可用工具：\n" + "\n".join(tools_desc)
-        )
-
-        messages: List[Dict[str, str]] = [
-            {"role": "system", "content": TOOL_POLICY},
-            {"role": "system", "content": system_tools},
-        ]
-
-        history = task.context.get("chat_messages") or []
-        if isinstance(history, list):
-            messages.extend([m for m in history if isinstance(m, dict) and m.get("role") and m.get("content")])
-
-        messages.append({"role": "user", "content": react_prompt + post_tool_extra})
-
-        # 确保 user 消息写入 chat_messages
-        task.context['chat_messages'].append({
-            "role": "user",
-            "content": react_prompt + post_tool_extra
-        })
-
-        return messages
+    # _build_messages 已移除，由 session/build_messages_for_llm 负责
 
     async def _stream_llm_call(
         self,
@@ -301,6 +225,7 @@ class AgentKernel:
     ) -> str:
         xml_filter = XMLStreamFilter()
         collected: List[str] = []
+        thinking_buf: List[str] = []
         action_buf: List[str] = []
         final_buf: List[str] = []
         thought_shown = action_shown = final_shown = False
@@ -315,7 +240,7 @@ class AgentKernel:
                 filtered, section = xml_filter.process_chunk(chunk)
 
                 # header events
-                if section == "thingking" and not thought_shown:
+                if section == "thinking" and not thought_shown:
                     await event_adapter.emit(ReActEvent(ReActEventType.THOUGHT_HEADER, {}))
                     thought_shown = True
                 elif section == "action" and not action_shown:
@@ -361,16 +286,13 @@ class AgentKernel:
     # ---------------- 工具执行与辅助 ----------------
     async def _run_tool_and_record(
         self,
-        task: Task,
         action: str,
         arguments: Dict[str, Any],
         event_adapter: ProgressCallbackAdapter,
-        iteration: int,
     ) -> str:
-        chat_messages: List[Dict[str, str]] = task.context.setdefault("chat_messages", [])
         call_json = json.dumps({"tool": action, "arguments": arguments}, ensure_ascii=False)
-        chat_messages.append({"role": "assistant", "content": call_json})
-        task.scratchpad.append(f"ToolCall: {call_json}")
+        # 记录工具调用的简要信息到全局qa_history（可追溯）
+        self.session.append_qa({"role": "assistant", "content": call_json})
         try:
             mgr = await MCPServerManager.get_instance()
             raw_result = await mgr.call_tool(action, arguments or {})
@@ -379,27 +301,41 @@ class AgentKernel:
             except Exception:
                 serialized = str(raw_result)
             observation = serialized[:2000]
-            # 使用 assistant 角色存储工具结果，避免底层 API 对 tool 消息的额外字段要求
-            chat_messages.append({"role": "assistant", "content": f"<tool_result name=\"{action}\">{observation}</tool_result>"})
+
+            # 将本轮 action 与 observation 以“对话消息”的形式注入 scratchpad，供下一轮 LLM 分析
+            # - assistant: 代表上一轮模型的动作
+            # - user: 代表环境返回的观察结果
+            self.scratchpad.append({
+                "role": "assistant",
+                "content": f"Action: {call_json}"
+            })
+            self.scratchpad.append({
+                "role": "user",
+                "content": f"Observation: {observation}"
+            })
+
+            # 将 observation 通过事件流输出到终端以便可视化
             await event_adapter.emit(
                 ReActEvent(ReActEventType.STREAM_CHUNK, {"content": observation, "type": "observation"})
             )
-            task.scratchpad.append(
-                f"Iteration {iteration}: {action} -> 成功"
-            )
-            task.context["tool_calls_count"] = int(task.context.get("tool_calls_count", 0) or 0) + 1
             return observation
         except Exception as e:  # noqa: BLE001
             err = f"ERROR: {e}"
-            chat_messages.append({"role": "assistant", "content": f"<tool_result name=\"{action}\">{err}</tool_result>"})
+
+            # 注入失败情况下同样保持“动作→观察”的对话形态，确保下一轮有足够上下文自行决策
+            self.scratchpad.append({
+                "role": "assistant",
+                "content": f"Action: {call_json}"
+            })
+            self.scratchpad.append({
+                "role": "user",
+                "content": f"Observation: {err}"
+            })
+
             await event_adapter.emit(
                 ReActEvent(ReActEventType.STREAM_CHUNK, {"content": err, "type": "observation"})
             )
-            task.scratchpad.append(
-                f"Iteration {iteration}: {action} -> 失败 {e}"
-            )
-            # 给模型一个自然的下一步引导
-            chat_messages.append({
+            self.session.append_qa({
                 "role": "assistant",
                 "content": "工具调用失败。请只在确有必要时再尝试一次修正，否则直接输出 <final_answer> 总结。",
             })
@@ -423,7 +359,6 @@ class AgentKernel:
                     return str(obj["tool"]), args
         except Exception:
             return "", {}
-        return "", {}
 
     def _extract_fallback_final(self, response: str) -> str:
         # 去掉 action json 片段，只返回可读文本
@@ -434,6 +369,3 @@ class AgentKernel:
             except Exception:  # noqa: BLE001
                 pass
         return response.strip() or "任务完成"
-
-
-

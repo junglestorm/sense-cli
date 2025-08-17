@@ -5,11 +5,62 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict, Union
 
 from pydantic import BaseModel, Field
 
 
+
+# 标准化历史条目类型
+from typing import Literal
+
+class QAItem(TypedDict):
+    role: Literal['user', 'event', 'agent', 'tool', 'system']
+    content: str
+    # 可扩展更多字段，如 timestamp, tool_name, etc.
+
+# OpenAI标准消息格式
+class Message(TypedDict):
+    role: Literal['system', 'user', 'assistant', 'tool']
+    content: str
+
+class Context(TypedDict):
+    """
+    符合OpenAI标准的上下文结构，用于构建传递给LLM的消息
+    所有字段都会被转换为标准的Message格式
+    """
+   
+    # 系统级提示信息 - 将转换为 {"role": "system", "content": system_prompt}
+    system_prompt: Message
+    
+    # 工具使用策略 - 将转换为 {"role": "system", "content": tool_policy}
+    tool_policy: Message
+    
+    # 可用工具列表 - 将转换为 {"role": "system", "content": 工具描述文本}
+    available_tools: Message
+    
+    # 记忆/外部知识上下文 - 将转换为 {"role": "system", "content": memory_context}
+    memory_context: Message
+    
+    # ReAct提示词 - 将转换为 {"role": "system", "content": react_prompt}
+    react_prompt: Message
+
+    # 任务与最终结果历史记录（符合OpenAI消息格式）,内部message的role只能为user或者assistant
+    qa_history: List[Message]
+    
+    # 当前task描述
+    task_description: Message
+
+
+class Scratchpad(TypedDict, total=False):
+    """ReAct单步执行记录"""
+
+    # 模型返回的思考、工具调用、返回值轨迹,role为assistant、tool
+    trace: List[Message]
+    
+    
+
+ 
 class TaskStatus(str, Enum):
     """任务状态"""
 
@@ -40,7 +91,7 @@ class ToolResult(BaseModel):
 
 
 class Task(BaseModel):
-    """任务对象"""
+    """任务对象接口"""
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     description: str
@@ -55,9 +106,9 @@ class Task(BaseModel):
     timeout: int = 300  # 秒
     current_iteration: int = 0
 
-    # 上下文
-    context: Dict[str, Any] = Field(default_factory=dict)
-    scratchpad: List[str] = Field(default_factory=list)  # ReAct轨迹
+    # 移除context字段，Task不再直接管理context
+    # context: TaskContext = Field(default_factory=dict)
+    # scratchpad移到运行时处理，不在Task对象中持久化存储
 
     # 结果
     result: Optional[Any] = None
@@ -131,43 +182,3 @@ class TriggerEvent(BaseModel):
     enabled: bool = True
     created_at: datetime = Field(default_factory=datetime.now)
     last_triggered: Optional[datetime] = None
-
-
-class StockInfo(BaseModel):
-    """股票信息"""
-
-    symbol: str
-    name: str
-    market: str  # A股, US, HK等
-    current_price: Optional[float] = None
-    change: Optional[float] = None
-    change_percent: Optional[float] = None
-    volume: Optional[int] = None
-    market_cap: Optional[float] = None
-    last_updated: Optional[datetime] = None
-
-
-class MarketData(BaseModel):
-    """市场数据"""
-
-    symbol: str
-    timestamp: datetime
-    open: Optional[float] = None
-    high: Optional[float] = None
-    low: Optional[float] = None
-    close: Optional[float] = None
-    volume: Optional[int] = None
-    adj_close: Optional[float] = None
-
-
-class NewsItem(BaseModel):
-    """新闻条目"""
-
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    title: str
-    content: str
-    url: Optional[str] = None
-    source: str
-    published_at: datetime
-    symbols_mentioned: List[str] = Field(default_factory=list)
-    sentiment_score: Optional[float] = None  # -1到1之间

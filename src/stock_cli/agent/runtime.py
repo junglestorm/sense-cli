@@ -11,10 +11,10 @@ from pathlib import Path
 import yaml
 
 from .kernel import AgentKernel
-from ..core.context import ContextManager, MemoryManager
 from ..core.prompt_loader import prompt_builder
 from ..core.llm_provider import LLMProviderFactory
 from ..core.types import AgentConfig
+from ..core.session import SessionManager
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +22,24 @@ logger = logging.getLogger(__name__)
 _kernel: Optional[AgentKernel] = None
 _current_model: Optional[str] = None
 
+# 全局SessionManager实例
+_session_manager: Optional[SessionManager] = None
+
 
 def current_model() -> Optional[str]:
     """获取当前使用的模型名称"""
     return _current_model
 
 
-async def ensure_kernel() -> AgentKernel:
+def get_session_manager() -> SessionManager:
+    """获取全局SessionManager实例"""
+    global _session_manager
+    if _session_manager is None:
+        _session_manager = SessionManager()
+    return _session_manager
+
+
+async def ensure_kernel(session_id: str = "default") -> AgentKernel:
     """确保获取AgentKernel实例（懒加载 + 单例）"""
     global _kernel, _current_model
     if _kernel is not None:
@@ -80,27 +91,27 @@ async def ensure_kernel() -> AgentKernel:
         except Exception as e:
             raise RuntimeError(f"创建LLM提供者失败: {e}")
 
+
         # 初始化核心组件
-        # 先创建MemoryManager
-        memory_config = settings.get("database", {})
-        memory_manager = MemoryManager(memory_config)
-        # 再创建ContextManager
-        context_manager = ContextManager(memory_manager)
+        # 创建SessionManager
+        session_manager = get_session_manager()
+        session = session_manager.get_session(session_id)
 
         # 创建Agent配置
         agent_config = AgentConfig(
-            max_iterations=20,
-            timeout_seconds=300,
-            default_model=provider_config.get("model"),
-            fallback_model=provider_config.get(
-                "fallback_model", provider_config.get("model")
-            ),
+            timeout=300,
+            llm_model=provider_config.get("model"),
+            llm_temperature=0.1,
+            llm_max_tokens=4096,
+            provider_name=provider_name,
+            tool_timeout=30,
+            max_tool_retries=3,
         )
 
-        # 创建AgentKernel实例
+        # 创建AgentKernel实例，传入 session
         _kernel = AgentKernel(
             llm_provider=llm_provider,
-            context_manager=context_manager,
+            session=session,
             prompt_builder=prompt_builder,
             config=agent_config,
         )
@@ -108,9 +119,8 @@ async def ensure_kernel() -> AgentKernel:
         logger.info("AgentKernel 初始化成功，使用模型: %s", _current_model)
         return _kernel
     except Exception as e:
-        logger.error("AgentKernel 初始化失败: %s", str(e))
-        raise
-
+        logger.error("AgentKernel 初始化失败: %s", e)
+        raise e
 
 async def cleanup_kernel():
     """清理AgentKernel实例"""

@@ -30,7 +30,7 @@
         
         <steps>
             <step id="1">
-                <name>Thingking (思考)</name>
+                <name>Thinking (思考)</name>
                 <description>分析当前情况，决定下一步行动</description>
                 <actions>
                     <action>评估已有信息是否充足</action>

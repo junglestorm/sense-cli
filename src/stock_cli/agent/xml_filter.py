@@ -82,6 +82,8 @@ class XMLStreamFilter:
                                 section_type = "final_answer_end"
                             elif tag_name == "action":
                                 section_type = "action_end"
+                            elif tag_name == "thinking":
+                                section_type = "thinking_end"
 
                             self.state = FilterState.OUTSIDE
 

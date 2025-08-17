@@ -61,11 +61,12 @@ class PromptLoader:
                     child_text = extract_text(child, level + 1)
                     if child_text:
                         # 根据标签类型添加格式
-                        if child.tag in ["system", "context", "instructions"]:
+                        if child.tag in ["system", "context", "instructions", "react_process", "output_format", "guidelines"]:
                             text_parts.append(
                                 f"\n<{child.tag}>\n{child_text}\n</{child.tag}>"
                             )
-                        elif child.tag in ["description", "task"]:
+                        elif child.tag in ["description", "task", "execution_history", "available_tools", "memory_context", "conversation_history", "current_task"]:
+                            # 对于这些标签，直接包含其内容而不添加额外的标签
                             text_parts.append(f"{child_text}")
                         elif child.tag in ["requirement", "guideline", "note"]:
                             text_parts.append(f"- {child_text}")
@@ -90,11 +91,14 @@ class PromptLoader:
     def format_prompt(self, prompt_name: str, **kwargs) -> str:
         """格式化提示词"""
         template = self.load_prompt(prompt_name)
+        logger.debug(f"加载提示词模板: {prompt_name}")
+        logger.debug(f"提示词参数: {kwargs}")
 
         try:
             # 使用Template类进行安全的字符串替换
             prompt_template = Template(template)
             formatted_prompt = prompt_template.safe_substitute(**kwargs)
+            logger.debug(f"格式化后的提示词: {formatted_prompt}")
 
             logger.debug(f"已格式化提示词: {prompt_name}")
             return formatted_prompt
@@ -117,6 +121,13 @@ class PromptLoader:
 
 
 class PromptBuilder:
+    async def build_messages_for_llm(self, context, scratchpad=None):
+        """
+        兼容 kernel 统一调用，代理 ContextManager 的 build_messages_for_llm
+        """
+        from .session import ContextManager
+        cm = ContextManager()
+        return await cm.build_messages_for_llm(context, scratchpad)
     """提示词构建器，用于动态构建复杂提示词"""
 
     def __init__(self, loader: PromptLoader):
@@ -141,6 +152,7 @@ class PromptBuilder:
         conversation_history: list = None,
     ) -> str:
         """构建ReAct提示词"""
+        logger.debug(f"构建ReAct提示词，current_task: {current_task}")
         tools_description = self._format_tools_list(available_tools)
         scratchpad_text = self._format_scratchpad(scratchpad)
         conversation_text = self._format_conversation_history(
@@ -198,7 +210,34 @@ class PromptBuilder:
         if not scratchpad:
             return "暂无执行历史"
 
-        return "\n".join(scratchpad)
+        # 处理scratchpad中的字典元素
+        formatted_items = []
+        for item in scratchpad:
+            if isinstance(item, dict):
+                # 如果是字典，将其转换为字符串表示
+                if "trace_back" in item:
+                    # 处理trace_back字典
+                    trace_back = item["trace_back"]
+                    if isinstance(trace_back, list):
+                        formatted_items.append("执行历史:")
+                        for trace_item in trace_back:
+                            if isinstance(trace_item, dict):
+                                formatted_items.append(f"  {trace_item.get('location', 'unknown')}: {trace_item.get('content', '')}")
+                            else:
+                                formatted_items.append(f"  {str(trace_item)}")
+                    else:
+                        formatted_items.append(f"执行历史: {str(trace_back)}")
+                elif "tool_calls_count" in item:
+                    # 处理tool_calls_count字典
+                    formatted_items.append(f"工具调用次数: {item['tool_calls_count']}")
+                else:
+                    # 处理其他字典
+                    formatted_items.append(str(item))
+            else:
+                # 如果是其他类型，直接转换为字符串
+                formatted_items.append(str(item))
+
+        return "\n".join(formatted_items)
 
     def _format_conversation_history(self, conversation_history: list) -> str:
         """格式化对话历史"""
