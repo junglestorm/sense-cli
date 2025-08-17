@@ -35,12 +35,13 @@ async def _run_agent_with_interrupt(
     *,
     capture_steps: bool = False,
     minimal: bool = False,
+    session_id: str = "default",
 ) -> dict:
     """运行Agent任务并支持中断"""
     global _current_task, _interrupt_requested
 
     _interrupt_requested = False
-    kernel = await ensure_kernel()
+    kernel = await ensure_kernel(session_id=session_id)
     start_t = time.time()
     progress_lines: List[str] = []
 
@@ -62,7 +63,16 @@ async def _run_agent_with_interrupt(
             console.print(f"[dim]{text}[/dim]", end="")
         elif not minimal and chunk.startswith("[StreamObservation]"):
             text = chunk.replace("[StreamObservation]", "")
-            console.print(f"\n[dim]🔎 observation: {text}[/dim]", end="")
+            pretty = text
+            try:
+                import json as _json
+                trimmed = text.strip()
+                if trimmed.startswith("{") or trimmed.startswith("["):
+                    pretty = _json.dumps(_json.loads(trimmed), ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+            console.print("\n[dim]🔎 observation:[/dim]")
+            console.print(f"[dim]{pretty}[/dim]", end="")
         elif not minimal and chunk.startswith("[ThinkingHeader]"):
             console.print("\n[dim]💭 thinking: [/dim]", end="")
         elif not minimal and chunk.startswith("[ActionHeader]"):
@@ -120,10 +130,21 @@ async def _run_agent_with_interrupt(
         if _current_task:
             _current_task.cancel()
         raise
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
+        # 其余异常向上抛出，由调用侧统一处理
         raise
     finally:
         _current_task = None
+
+async def _cleanup_mcp_resources():
+    """优雅清理 MCP 资源，避免 anyio cancel scope 异常"""
+    try:
+        from ..tools.mcp_server_manager import MCPServerManager
+        mgr = await MCPServerManager.get_instance()
+        await mgr.cleanup()
+    except Exception:
+        # 清理失败不影响主流程
+        pass
 
 
 async def _interactive(
@@ -136,12 +157,19 @@ async def _interactive(
     confirm: bool = False,
     output_format: str = "text",
     timeout: int = 30,
+    session_id: str = "default",
 ):
     """交互式 CLI 主循环"""
     # 确保 Agent kernel 可用
     try:
-        await ensure_kernel()
+        await ensure_kernel(session_id=session_id)
         kernel_ref = get_kernel()  # 获取kernel实例以供后续使用
+        # 预初始化 MCP 管理器，确保在同一任务中 enter/exit，避免 anyio cancel scope 错误
+        try:
+            from ..tools.mcp_server_manager import MCPServerManager
+            await MCPServerManager.get_instance()
+        except Exception:
+            pass
     except Exception:
         console.print("[red]初始化核心服务失败[/red]")
         raise typer.Exit(1)
@@ -155,6 +183,7 @@ async def _interactive(
                 once,  # 传递用户问题
                 capture_steps=debug,
                 minimal=quiet or (not verbose and not debug),
+                session_id=session_id,
             )
         except asyncio.CancelledError:
             # 任务被取消
@@ -188,9 +217,17 @@ async def _interactive(
             user_input = await session.prompt_async("stock-cli> ")
         except KeyboardInterrupt:
             console.print("\n[yellow]Bye![/yellow]")
+            try:
+                await _cleanup_mcp_resources()
+            except Exception:
+                pass
             break
         except EOFError:
             console.print("\n[yellow]Bye![/yellow]")
+            try:
+                await _cleanup_mcp_resources()
+            except Exception:
+                pass
             break
 
         user_input = user_input.strip()
@@ -199,6 +236,10 @@ async def _interactive(
 
         if user_input in ["/quit", "/exit"]:
             console.print("[yellow]Bye![/yellow]")
+            try:
+                await _cleanup_mcp_resources()
+            except Exception:
+                pass
             break
         elif user_input in ["/help", "/h"]:
             show_help()
@@ -218,7 +259,7 @@ async def _interactive(
             continue
 
         # 使用SessionManager管理会话
-        session_obj = _session_manager.get_session("default")
+        session_obj = _session_manager.get_session(session_id)
                     
         # 创建任务并执行
         task = session_obj.create_task(description=user_input)
@@ -227,6 +268,7 @@ async def _interactive(
                 user_input,
                 capture_steps=debug,
                 minimal=quiet or (not verbose and not debug),
+                session_id=session_id,
             )
         except asyncio.CancelledError:
             # 任务被取消，已经在_run_agent_with_interrupt中处理了
@@ -237,6 +279,13 @@ async def _interactive(
         # 最终答案已经通过XML状态机流式输出，无需额外处理
 
         # 推理过程已经实时显示，不再重复显示
+        # 退出聊天循环后，优雅关闭 MCP 资源，避免 anyio cancel scope 异常
+        try:
+            await _cleanup_mcp_resources()
+        except Exception:
+            pass
+
+
 
 
 async def _show_tools():

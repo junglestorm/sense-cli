@@ -30,6 +30,7 @@ def ask(
         False, "--human-approval", help="启用人工审批模式"
     ),
     confirm: bool = typer.Option(False, "--confirm", "-y", help="最终答案需要人工确认"),
+    session_id: str = typer.Option("default", "--session-id", "-s", help="指定会话ID（用于上下文持久化与连续记忆）"),
 ) -> None:
     """单轮问答模式 - 向AI提出问题并获得答案"""
     # 设置信号处理器
@@ -58,5 +59,6 @@ def ask(
             confirm,  # quiet=False, verbose=True
             output_format=output,
             timeout=timeout,
+            session_id=session_id,
         )
     )
