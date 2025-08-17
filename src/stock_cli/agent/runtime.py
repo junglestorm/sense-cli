@@ -6,15 +6,13 @@ from __future__ import annotations
 
 import logging
 from typing import Optional
-from pathlib import Path
-
-import yaml
 
 from .kernel import AgentKernel
 from ..core.prompt_loader import prompt_builder
 from ..core.llm_provider import LLMProviderFactory
 from ..core.types import AgentConfig
 from ..core.session import SessionManager
+from ..core.config_resolver import resolve_settings_path, load_settings
 
 logger = logging.getLogger(__name__)
 
@@ -46,15 +44,9 @@ async def ensure_kernel(session_id: str = "default") -> AgentKernel:
         return _kernel
 
     try:
-        # 加载配置
-        project_root = Path(__file__).resolve().parent.parent.parent.parent
-        settings_path = project_root / "config" / "settings.yaml"
-
-        if not settings_path.exists():
-            raise RuntimeError(f"配置文件未找到: {settings_path}")
-
-        with open(settings_path, "r", encoding="utf-8") as f:
-            settings = yaml.safe_load(f)
+        # 加载配置（通过 config_resolver 发现与读取）
+        settings_path = resolve_settings_path()
+        settings = load_settings(settings_path)
 
         # 获取LLM配置
         llm_settings = settings.get("llm", {})

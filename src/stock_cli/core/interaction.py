@@ -5,21 +5,16 @@
 
 import asyncio
 import time
-import sys
 from typing import Optional, List, Callable, Awaitable, Dict, Any
 
 import typer
 from rich import print
 from rich.console import Console
-from rich.markdown import Markdown
-from rich.panel import Panel
 from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 
 from ..agent.runtime import ensure_kernel, get_kernel, current_model
 from ..core.session import SessionManager
-from ..core.types import Task
 from ..utils.display import show_help, show_status, print_banner
 
 console = Console()
@@ -63,16 +58,8 @@ async def _run_agent_with_interrupt(
             console.print(f"[dim]{text}[/dim]", end="")
         elif not minimal and chunk.startswith("[StreamObservation]"):
             text = chunk.replace("[StreamObservation]", "")
-            pretty = text
-            try:
-                import json as _json
-                trimmed = text.strip()
-                if trimmed.startswith("{") or trimmed.startswith("["):
-                    pretty = _json.dumps(_json.loads(trimmed), ensure_ascii=False, indent=2)
-            except Exception:
-                pass
-            console.print("\n[dim]🔎 observation:[/dim]")
-            console.print(f"[dim]{pretty}[/dim]", end="")
+            console.print("\n[dim]🔎 observation:[/dim]", end="")
+            console.print(f"[dim]{text}[/dim]", end="")
         elif not minimal and chunk.startswith("[ThinkingHeader]"):
             console.print("\n[dim]💭 thinking: [/dim]", end="")
         elif not minimal and chunk.startswith("[ActionHeader]"):
@@ -91,25 +78,17 @@ async def _run_agent_with_interrupt(
             # 最终答案结束，显示下方横线
             console.print(f"\n{'─' * 50}")
         # 过滤掉原始的ReAct关键词
-        elif not minimal and chunk.strip() in ["Action", "Thought", "Final Answer"]:
-            pass  # 忽略这些原始关键词
         if capture_steps and chunk.startswith("[StreamThinking]"):
             progress_lines.append(chunk)
 
-    from ..core.types import Task
 
-    # 使用 Kernel 维护的同一会话，确保上下文统一
-    session = kernel.session
-    # 把本轮用户问题写入全局 qa_history，保证对话记忆可被后续轮次读取
-    try:
-        session.append_qa({"role": "user", "content": question})
-    except Exception:
-        pass
-
-    task = session.create_task(description=question)
-
+    # 直接通过 Kernel.run 执行，保持统一入口（Kernel 内部负责 append_qa 与 Task 创建）
     _current_task = asyncio.create_task(
-        kernel.execute_task(task, progress_cb=on_progress)
+        kernel.run(
+            question,
+            progress_cb=on_progress,
+            record_user_question=True,
+        )
     )
 
     try:
@@ -209,8 +188,7 @@ async def _interactive(
     if verbose:
         print_banner(active_model, mode="chat")
 
-    history = FileHistory(".stock_cli_history")
-    session = PromptSession(history=history, auto_suggest=AutoSuggestFromHistory())
+    session = PromptSession(auto_suggest=AutoSuggestFromHistory())
 
     while True:
         try:
@@ -247,9 +225,6 @@ async def _interactive(
         elif user_input == "/clear":
             console.clear()
             continue
-        elif user_input == "/tools":
-            await _show_tools()
-            continue
         elif user_input == "/status":
             show_status()
             continue
@@ -258,11 +233,6 @@ async def _interactive(
             console.print(f"Stock Agent CLI v{__version__}")
             continue
 
-        # 使用SessionManager管理会话
-        session_obj = _session_manager.get_session(session_id)
-                    
-        # 创建任务并执行
-        task = session_obj.create_task(description=user_input)
         try:
             res = await _run_agent_with_interrupt(
                 user_input,
@@ -287,20 +257,3 @@ async def _interactive(
 
 
 
-
-async def _show_tools():
-    """显示当前可用的MCP工具"""
-    try:
-        from ..tools.mcp_server_manager import MCPServerManager
-        mgr = await MCPServerManager.get_instance()
-        tools = await mgr.list_tools()
-    except Exception as e:  # noqa: BLE001
-        console.print(f"[red]Failed to fetch tools: {e}")
-        return
-    if not tools:
-        console.print("[yellow]No tools available[/yellow]")
-        return
-    rows = [f"[bold]{t.name}[/bold]: {getattr(t, 'description', '')}" for t in tools]
-    console.print(
-        Panel("\n".join(rows), title=f"Tools ({len(rows)})", border_style="cyan")
-    )

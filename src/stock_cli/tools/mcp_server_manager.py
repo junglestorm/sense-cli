@@ -21,30 +21,16 @@ from typing import Dict, Any, List, Optional, ClassVar
 from contextlib import AsyncExitStack
 from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp.client.session import ClientSession
-from mcp.client.sse import sse_client
 
-# 优化日志配置
-from logging.handlers import RotatingFileHandler
+from ..logs.logger import get_logger
 
-def setup_logging(log_path: str, level=logging.ERROR, max_bytes=5*1024*1024, backup_count=5):
-    handler = RotatingFileHandler(log_path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8")
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    handler.setFormatter(formatter)
-    logger = logging.getLogger(__name__)
-    logger.setLevel(level)
-    logger.handlers.clear()
-    logger.addHandler(handler)
-    logger.propagate = False
-    return logger
-
-logger = setup_logging("logs/mcp.log")
+logger = get_logger(__name__)
 
 
 class ServerType(Enum):
     """服务器类型枚举"""
 
     STDIO = "stdio"
-    SSE = "sse"
 
 
 @dataclass
@@ -213,30 +199,16 @@ class MCPServerManager:
         )
 
     async def _initialize_server(self, config: ServerConfig) -> None:
-        """初始化单个服务器"""
+        """初始化单个服务器（仅支持 STDIO）"""
         try:
-            if config.type == ServerType.SSE:
-                session = await self._create_sse_session(config)
-            else:
-                session = await self._create_stdio_session(config)
-
+            session = await self._create_stdio_session(config)
             await session.initialize()
             self.sessions[config.name] = session
             logger.info(f"服务器 {config.name} 初始化成功")
-
         except Exception as e:
             logger.error(f"初始化服务器 {config.name} 失败: {e}")
             raise
 
-    async def _create_sse_session(self, config: ServerConfig) -> ClientSession:
-        """创建SSE会话"""
-        if not config.url:
-            raise ValueError(f"SSE服务器 {config.name} 缺少URL配置")
-
-        sse_transport = sse_client(config.url, headers=config.headers or {})
-        transport = await self.exit_stack.enter_async_context(sse_transport)
-        read, write = transport
-        return await self.exit_stack.enter_async_context(ClientSession(read, write))
 
     async def _create_stdio_session(self, config: ServerConfig) -> ClientSession:
         """创建STDIO会话"""
@@ -409,50 +381,3 @@ class MCPServerManager:
             type(self)._initialized = False
 
 
-# 测试和调试代码
-if __name__ == "__main__":
-    import asyncio
-    import sys
-
-    async def main():
-        """测试MCPServerManager功能"""
-        config_path = sys.argv[1] if len(sys.argv) > 1 else "config/mcp_config.json"
-
-        print(f"🔧 使用配置文件: {config_path}")
-
-        try:
-            # 获取管理器实例
-            manager = await MCPServerManager.get_instance()
-            print("✅ MCPServerManager 初始化成功")
-
-            # 列出所有工具
-            tools = await manager.list_tools()
-            print(f"🛠️  发现 {len(tools)} 个可用工具:")
-            for tool in tools:
-                print(f"   - {tool.name}: {tool.description}")
-
-            # 测试工具调用
-            if tools:
-                test_tool = tools[0]
-                print(f"\n🧪 测试调用工具: {test_tool.name}")
-                try:
-                    result = await manager.call_tool(test_tool.name, {})
-                    print(f"✅ 调用成功: {result}")
-                except Exception as e:
-                    print(f"❌ 调用失败: {e}")
-
-            # 测试缓存
-            print("\n💾 测试缓存功能...")
-            tools2 = await manager.list_tools()  # 应该使用缓存
-            print(f"✅ 缓存工作正常，获得 {len(tools2)} 个工具")
-
-        except Exception as e:
-            print(f"❌ 测试失败: {e}")
-            return
-
-        finally:
-            # 清理资源
-            await manager.cleanup()
-            print("🧹 资源清理完成")
-
-    asyncio.run(main())

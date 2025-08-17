@@ -80,16 +80,6 @@ class TaskPriority(int, Enum):
     URGENT = 4
 
 
-class ToolResult(BaseModel):
-    """工具执行结果"""
-
-    success: bool
-    data: Any = None
-    error: Optional[str] = None
-    execution_time: float = 0.0
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-
-
 class Task(BaseModel):
     """任务对象接口"""
 

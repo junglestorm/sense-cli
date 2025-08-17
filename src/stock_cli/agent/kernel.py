@@ -34,8 +34,27 @@ class AgentKernel:
         self._last_action_payload: str = ""
         self._last_final_answer: str = ""
         self.scratchpad: list = []
-
+ 
     # ---------------- 公共入口 ----------------
+    async def run(
+        self,
+        description: str,
+        progress_cb: Optional[Callable[[str], Awaitable[None] | None]] = None,
+        record_user_question: bool = True,
+    ) -> Any:
+        """
+        简化入口：按描述执行一个任务
+        - 统一由 Kernel 内部创建 Task
+        - 可选将描述写入 qa_history（遵循 Unix：单一职责，对外提供最小接口）
+        """
+        if record_user_question:
+            try:
+                self.session.append_qa({"role": "user", "content": description})
+            except Exception:
+                pass
+        task = self.session.create_task(description=description)
+        return await self.execute_task(task, progress_cb=progress_cb)
+ 
     async def execute_task(
         self,
         task: Task,
@@ -87,29 +106,13 @@ class AgentKernel:
             )
             task.result = result
             task.status = TaskStatus.COMPLETED
-            self._write_qa_history_to_file(task)
             return result
         except Exception as e:  # noqa: BLE001
             task.status = TaskStatus.FAILED
             task.error_message = str(e)
             logger.exception("任务执行失败")
-            self._write_qa_history_to_file(task)
             raise
 
-    def _write_qa_history_to_file(self, task: Task):
-        """将qa_history写入文件"""
-        try:
-            qa_history = self.session.context.get("qa_history", [])
-            if not qa_history:
-                return
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            file_name = f"qa_history_{task.id or timestamp}.json"
-            file_path = os.path.join("logs", file_name)
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(json.dumps(qa_history, ensure_ascii=False, indent=2))
-            logger.info(f"qa_history已写入文件: {file_path}")
-        except Exception as e:
-            logger.error(f"写入qa_history失败: {e}")
     
     
 
