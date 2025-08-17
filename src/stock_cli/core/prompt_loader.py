@@ -121,13 +121,6 @@ class PromptLoader:
 
 
 class PromptBuilder:
-    async def build_messages_for_llm(self, context, scratchpad=None):
-        """
-        兼容 kernel 统一调用，代理 ContextManager 的 build_messages_for_llm
-        """
-        from .session import ContextManager
-        cm = ContextManager()
-        return await cm.build_messages_for_llm(context, scratchpad)
     """提示词构建器，用于动态构建复杂提示词"""
 
     def __init__(self, loader: PromptLoader):

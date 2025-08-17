@@ -24,8 +24,10 @@ def main_callback(
     version_flag: bool = typer.Option(False, "--version", "-V", help="显示版本信息"),
 ):
     """Stock Agent CLI - AI驱动的股票分析工具"""
-    from .utils.logging import setup_logging
-    
+    # 统一日志系统
+    from .logs.logger import configure_logging
+    configure_logging(level="ERROR", console=False)
+
     if version_flag:
         version.version()
         raise typer.Exit()
@@ -35,9 +37,6 @@ def main_callback(
 
     if ctx.invoked_subcommand is None:
         # 默认进入对话模式
-        
-
-        setup_logging("ERROR")
         import asyncio
         asyncio.run(
             _interactive(None, None, False, True, False, False, False)

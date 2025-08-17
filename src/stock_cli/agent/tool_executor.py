@@ -4,18 +4,11 @@
 """
 
 import logging
-from typing import Dict, Any, Optional, NamedTuple
+from typing import Dict, Any
 from ..tools.mcp_server_manager import MCPServerManager
+from ..core.types import ToolResult
 
 logger = logging.getLogger(__name__)
-
-
-class ToolResult(NamedTuple):
-    """工具执行结果"""
-
-    success: bool
-    result: Any
-    error_message: Optional[str] = None
 
 
 class ToolExecutor:
@@ -42,8 +35,8 @@ class ToolExecutor:
             mgr = await MCPServerManager.get_instance()
             result = await mgr.call_tool(action, cleaned_params)
 
-            return ToolResult(success=True, result=result)
+            return ToolResult(success=True, data=result)
 
         except Exception as e:
             logger.warning(f"工具执行失败 {action}: {e}")
-            return ToolResult(success=False, result=None, error_message=str(e))
+            return ToolResult(success=False, data=None, error=str(e))

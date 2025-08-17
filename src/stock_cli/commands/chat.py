@@ -7,7 +7,7 @@ import typer
 from rich.console import Console
 
 from ..core.interaction import _interactive
-from ..utils.logging import setup_logging
+from ..logs.logger import configure_logging
 from ..utils.signals import setup_signal_handlers
 
 console = Console()
@@ -21,7 +21,8 @@ def chat(
     
     # 设置信号处理器
     setup_signal_handlers()
-    setup_logging("ERROR")
+    # 统一日志配置：仅写入文件，避免污染终端
+    configure_logging(level="ERROR", console=False)
 
     
 

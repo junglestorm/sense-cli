@@ -106,7 +106,8 @@ class AgentKernel:
             file_name = f"qa_history_{task.id or timestamp}.json"
             file_path = os.path.join("logs", file_name)
             with open(file_path, "w", encoding="utf-8") as f:
-                logger.info(f"qa_history已写入文件: {file_path}")
+                f.write(json.dumps(qa_history, ensure_ascii=False, indent=2))
+            logger.info(f"qa_history已写入文件: {file_path}")
         except Exception as e:
             logger.error(f"写入qa_history失败: {e}")
     
@@ -202,10 +203,7 @@ class AgentKernel:
             self.scratchpad.append({
                 "role": "user",
                 "content": (
-                    "上一次输出未提供 <action> 或 <final_answer>。请按策略：\n"
-                    "1) 若需要调用工具：输出 <action>{\"tool\":\"name\",\"arguments\":{...}}</action>\n"
-                    "2) 若可以直接回答：输出 <final_answer>答案内容</final_answer>\n"
-                    "不要再输出其它说明文字。"
+                    "上一次输出未提供 <action> 或 <final_answer>。请严格按照系统提示中的XML输出格式，仅输出 <thinking> + (<action> 或 <final_answer>)，不要输出其它说明文字。"
                 )
             })
             return None
@@ -296,11 +294,7 @@ class AgentKernel:
         try:
             mgr = await MCPServerManager.get_instance()
             raw_result = await mgr.call_tool(action, arguments or {})
-            try:
-                serialized = json.dumps(raw_result, ensure_ascii=False)
-            except Exception:
-                serialized = str(raw_result)
-            observation = serialized[:2000]
+            observation = self._format_observation(raw_result)
 
             # 将本轮 action 与 observation 以“对话消息”的形式注入 scratchpad，供下一轮 LLM 分析
             # - assistant: 代表上一轮模型的动作
@@ -335,11 +329,44 @@ class AgentKernel:
             await event_adapter.emit(
                 ReActEvent(ReActEventType.STREAM_CHUNK, {"content": err, "type": "observation"})
             )
+            # 记录失败上下文（便于排查）
+            try:
+                logger.warning("工具调用失败 action=%s args=%s err=%r", action, arguments, e)
+            except Exception:
+                pass
             self.session.append_qa({
                 "role": "assistant",
                 "content": "工具调用失败。请只在确有必要时再尝试一次修正，否则直接输出 <final_answer> 总结。",
             })
             return err
+
+    def _format_observation(self, raw_result: Any) -> str:
+        """
+        将工具返回规范化为可读文本，优先提取 MCP ToolResponse.content[*].text；
+        否则当为 dict 时输出 JSON；最后退化为 str(raw_result)。统一做长度截断。
+        """
+        try:
+            if hasattr(raw_result, "content"):
+                texts: List[str] = []
+                for item in getattr(raw_result, "content") or []:
+                    txt = None
+                    if hasattr(item, "text"):
+                        txt = item.text
+                    elif isinstance(item, dict):
+                        txt = item.get("text")
+                    if txt:
+                        texts.append(str(txt))
+                obs = "\n".join(texts) if texts else str(raw_result)
+            elif isinstance(raw_result, dict):
+                obs = json.dumps(raw_result, ensure_ascii=False)
+            else:
+                obs = str(raw_result)
+        except Exception as e:
+            obs = f"ERROR: 规范化工具返回失败: {e!r}"
+        obs = (obs or "").strip()
+        if len(obs) > 2000:
+            obs = obs[:2000]
+        return obs
 
     async def _reset_stream_markers(self):
         self._last_action_payload = ""

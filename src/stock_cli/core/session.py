@@ -1,6 +1,8 @@
 from typing import Dict, List, Any
 import json
 import logging
+from pathlib import Path
+import os
 
 from .types import Task, Context, Message,Scratchpad
 
@@ -20,6 +22,14 @@ class Session:
     def __init__(self, session_id: str):
         self.session_id = session_id
         self._context: Context = self._default_context()
+        # session 级别的上下文持久化文件（每个 session 一个文件）
+        self._session_file = Path("logs") / "sessions" / f"{self.session_id}.json"
+        try:
+            self._session_file.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        # 若存在历史上下文文件，则加载以延续会话
+        self._load_context_from_disk()
 
     def _default_context(self) -> Context:
         return {
@@ -112,12 +122,16 @@ class Session:
 
     def clear_context(self):
         self._context = self._default_context()
+        # 清空后立即落盘，确保磁盘与内存一致
+        self._save_context_to_disk()
 
 
     def append_qa(self, qa_item: Message):
         # 只允许 user/assistant
         if qa_item.get("role") in ("user", "assistant") and qa_item.get("content"):
             self._context["qa_history"].append(qa_item)
+            # 写入后保存整个 session 上下文，形成“以 session 为单位”的记录
+            self._save_context_to_disk()
 
 
     def summary_qa_history(self):
@@ -128,6 +142,31 @@ class Session:
         return Task(description=description, **kwargs)
         
 
+
+
+    # ---------------- 持久化（以 session 为单位） ----------------
+    def _save_context_to_disk(self) -> None:
+        try:
+            data = {
+                "session_id": self.session_id,
+                "context": self._context,
+            }
+            with open(self._session_file, "w", encoding="utf-8") as f:
+                f.write(json.dumps(data, ensure_ascii=False, indent=2))
+        except Exception as e:
+            logger.warning("保存会话上下文失败 session_id=%s err=%r", self.session_id, e)
+
+    def _load_context_from_disk(self) -> None:
+        try:
+            if self._session_file.exists():
+                with open(self._session_file, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                # 仅当结构合理时替换当前上下文
+                if isinstance(loaded, dict) and "context" in loaded and isinstance(loaded["context"], dict):
+                    # 做一次 set_context 规范化
+                    self.set_context(loaded["context"])  # type: ignore[arg-type]
+        except Exception as e:
+            logger.warning("加载会话上下文失败 session_id=%s err=%r", self.session_id, e)
 
 
 class SessionManager:

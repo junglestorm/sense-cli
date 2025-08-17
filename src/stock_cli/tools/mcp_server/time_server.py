@@ -2,11 +2,14 @@ from datetime import datetime
 from mcp.server.fastmcp import FastMCP
 import logging
 
-# 禁用所有日志输出到控制台
-logging.getLogger().setLevel(logging.CRITICAL)
+# 仅调整本模块与相关MCP模块的日志级别，避免影响全局 root logger
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.CRITICAL)
+
 for name in ["mcp", "mcp.server", "mcp.server.fastmcp", "mcp.server.lowlevel"]:
-    logging.getLogger(name).setLevel(logging.CRITICAL)
-    logging.getLogger(name).propagate = False
+    lg = logging.getLogger(name)
+    lg.setLevel(logging.CRITICAL)
+    lg.propagate = False
 
 # Create server
 mcp = FastMCP("Time Server")
