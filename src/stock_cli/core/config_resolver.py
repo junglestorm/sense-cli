@@ -61,3 +61,35 @@ def load_settings(path: Path) -> Dict[str, Any]:
         return data
     except Exception as e:
         raise RuntimeError(f"加载配置失败 {path}: {e}")
+
+
+def resolve_triggers_path(provided: Optional[str] = None) -> Path:
+    """
+    发现触发器配置文件路径的优先级：
+    1) CLI 显式提供的 --triggers-config
+    2) 默认 ./config/triggers.yaml
+    """
+    if provided:
+        p = Path(provided).expanduser().resolve()
+        if p.exists():
+            return p
+        raise RuntimeError(f"未找到触发器配置文件: {p}")
+
+    project_root = Path(__file__).resolve().parent.parent.parent.parent
+    default = project_root / "config" / "triggers.yaml"
+    if default.exists():
+        return default
+
+    raise RuntimeError("未找到 triggers.yaml，请先在 config/ 目录下创建触发器配置。")
+
+
+def load_triggers_config(path: Path) -> Dict[str, Any]:
+    """加载触发器 YAML 配置为 dict，提供清晰错误提示"""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        if not isinstance(data, dict):
+            raise ValueError("触发器配置文件必须是 YAML 字典结构")
+        return data
+    except Exception as e:
+        raise RuntimeError(f"加载触发器配置失败 {path}: {e}")

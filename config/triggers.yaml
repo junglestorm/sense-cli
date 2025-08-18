@@ -1,133 +1,22 @@
-# 触发器配置文件
-
-# 定时触发器 (Time-based Triggers)
-scheduled_tasks:
-  
-  # 每日市场概览
-  - name: "daily_market_overview"
-    description: "获取今日市场宏观新闻并进行总结"
-    cron: "0 8 * * 1-5"  # 工作日早上8点
+# 触发器配置（配置驱动，解耦 session 与 trigger 逻辑）
+# 用法：
+#   uv run stock-cli trigger
+#   - 若存在本文件且未提供 --fire/--interval，将自动并发运行此处配置的触发器
+#   - 可显式：uv run stock-cli trigger --run-config
+#   - 单独临时一次性触发：uv run stock-cli trigger --fire "xxx" -i 30 -s default -r system_scheduler
+#
+# 可扩展：
+# - 在 src/stock_cli/triggers/ 下新增模块并使用 @register("type_name") 注册
+# - 在此文件中将某条条目 type 设置为对应的 type_name 即可
+#
+# 下面示例：每 30 秒向模型询问当前北京时间（无限循环）
+triggers:
+  - name: every_30s_time
     enabled: true
-    priority: 1
-    task_template: "获取今日中国A股和美股市场的重要新闻，进行总结分析"
-  
-  # 每日关注股票监控
-  - name: "daily_watchlist_check"
-    description: "检查关注列表中股票的表现"
-    cron: "0 9 * * 1-5"  # 工作日早上9点
-    enabled: true
-    priority: 2
-    task_template: "检查我的关注股票列表中所有股票昨日和今日的表现，重点关注涨跌幅超过5%的股票"
-  
-  # 美股盘后总结
-  - name: "us_market_after_hours"
-    description: "美股收盘后市场总结"
-    cron: "0 5 * * 2-6"  # 美股收盘后 (北京时间早上5点)
-    enabled: true
-    priority: 1
-    task_template: "总结美股昨夜的整体表现，重点关注科技股和中概股"
-  
-  # 周末深度分析
-  - name: "weekend_deep_analysis"
-    description: "周末进行深度市场分析"
-    cron: "0 10 * * 6"  # 周六上午10点
-    enabled: false
-    priority: 3
-    task_template: "进行本周股市的深度分析，包括重大新闻事件对市场的影响，以及下周展望"
-
-# 事件触发器 (Event-based Triggers)
-event_triggers:
-  
-  # 股价异动监控
-  price_alerts:
-    - name: "large_price_movement"
-      description: "股价大幅波动预警"
-      enabled: true
-      priority: 1
-      conditions:
-        # 1小时内涨跌幅超过5%
-        price_change_1h: 5.0  # 百分比
-        # 或者日内涨跌幅超过8%
-        price_change_1d: 8.0
-      watchlist: "user_watchlist"  # 监控用户关注列表
-      check_interval: 300  # 检查间隔 (秒)
-      task_template: "股票 {symbol} 在 {timeframe} 内{direction}了 {change_percent:.1f}%，请调查原因并分析影响"
-  
-  # 成交量异动
-  volume_alerts:
-    - name: "unusual_volume"
-      description: "成交量异常预警" 
-      enabled: true
-      priority: 2
-      conditions:
-        volume_multiplier: 3.0  # 成交量是平均值的3倍以上
-        min_volume: 1000000  # 最小成交量门槛
-      watchlist: "user_watchlist"
-      check_interval: 600  # 10分钟检查一次
-      task_template: "股票 {symbol} 出现异常成交量 ({volume} vs 平均 {avg_volume})，请分析可能的原因"
-  
-  # 新闻事件触发
-  news_triggers:
-    - name: "breaking_financial_news"
-      description: "重大财经新闻事件"
-      enabled: false  # 需要新闻API支持
-      priority: 1
-      keywords:
-        - "重大重组"
-        - "并购"
-        - "财报"
-        - "业绩预告"
-        - "监管"
-        - "政策"
-      check_interval: 1800  # 30分钟检查一次
-      task_template: "发现重要新闻: {news_title}，请分析对相关股票和市场的潜在影响"
-
-# 用户关注股票列表 (可以动态修改)
-user_watchlist:
-  stocks:
-    # A股
-    - symbol: "000001.SZ"  # 平安银行
-      name: "平安银行"
-      market: "A股"
-    - symbol: "000858.SZ"  # 五粮液
-      name: "五粮液" 
-      market: "A股"
-    - symbol: "600519.SH"  # 茅台
-      name: "贵州茅台"
-      market: "A股"
-    
-    # 美股
-    - symbol: "AAPL"  # 苹果
-      name: "Apple Inc."
-      market: "US"
-    - symbol: "NVDA"  # 英伟达
-      name: "NVIDIA Corporation"
-      market: "US"
-    - symbol: "TSLA"  # 特斯拉
-      name: "Tesla Inc."
-      market: "US"
-    
-    # 港股
-    - symbol: "00700.HK"  # 腾讯
-      name: "腾讯控股"
-      market: "HK"
-
-# 触发器全局设置
-global_settings:
-  max_concurrent_tasks: 3  # 最大并发任务数
-  task_timeout: 1800  # 任务超时时间 (30分钟)
-  retry_failed_tasks: true
-  retry_delay: 300  # 重试延迟 (5分钟)
-  max_retries: 2
-  
-  # 工作时间限制 (只在这些时间内触发事件监控)
-  working_hours:
-    enabled: true
-    start: "09:00"  # 北京时间
-    end: "21:00"   # 北京时间
-    timezone: "Asia/Shanghai"
-  
-  # 节假日跳过
-  skip_holidays:
-    enabled: true
-    holiday_calendar: "china"  # 中国节假日
+    session_id: default            # 绑定的会话；仅通过 ID 解耦
+    role: system_scheduler         # 事件在会话历史中的角色
+    type: ask_time                 # 触发器类型（由 src/stock_cli/triggers/ask_time.py 注册）
+    fire: "定时: 询问当前时间"        # 事件文本（记录到 session.append_event）
+    task_template: "请直观回答当前北京时间，格式：YYYY-MM-DD HH:mm:ss。回答过程中必须调用工具获得实时信息"  # 提交给 kernel.run 的任务描述
+    interval_seconds: 30           # 轮询间隔秒
+    max_runs: 0                    # 0 表示无限

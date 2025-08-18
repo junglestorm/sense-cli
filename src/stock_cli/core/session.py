@@ -30,6 +30,8 @@ class Session:
             pass
         # 若存在历史上下文文件，则加载以延续会话
         self._load_context_from_disk()
+        # 触发器引用表（运行期使用，不参与持久化）
+        self.triggers: Dict[str, Any] = {}
 
     def _default_context(self) -> Context:
         return {
@@ -132,6 +134,20 @@ class Session:
             self._context["qa_history"].append(qa_item)
             # 写入后保存整个 session 上下文，形成“以 session 为单位”的记录
             self._save_context_to_disk()
+
+    def append_event(self, role: str, content: str):
+        """
+        附加触发事件到会话历史：
+        - 按触发来源自定义 role（如 'system_scheduler'、'crawler_event' 等）
+        - 仅参与持久化展示；当前不会被纳入 LLM 对话上下文（build_llm_messages 仅带入 user/assistant）
+        """
+        try:
+            if not content:
+                return
+            self._context["qa_history"].append({"role": role, "content": content})
+            self._save_context_to_disk()
+        except Exception as e:
+            logger.warning("追加事件到会话失败 session_id=%s role=%s err=%r", self.session_id, role, e)
 
 
     def summary_qa_history(self):
