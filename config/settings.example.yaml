@@ -91,3 +91,19 @@ human_loop:
   
   # 超时时间 (秒)
   timeout: 300
+
+# 会话配置
+sessions:
+  default:
+    # 会话模式: normal (普通对话) | trigger (触发器模式)
+    mode: "normal"
+    # 触发器配置（仅在 trigger 模式下有效）
+    triggers: []
+    
+  # 示例：触发器模式会话配置
+  triggered_session:
+    mode: "trigger"
+    triggers:
+      - type: "ask_time"
+        interval_seconds: 30
+        enabled: true
