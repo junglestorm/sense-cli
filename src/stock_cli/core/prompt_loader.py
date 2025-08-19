@@ -65,7 +65,7 @@ class PromptLoader:
                             text_parts.append(
                                 f"\n<{child.tag}>\n{child_text}\n</{child.tag}>"
                             )
-                        elif child.tag in ["description", "task", "execution_history", "available_tools", "memory_context", "conversation_history", "current_task"]:
+                        elif child.tag in ["description", "task", "execution_history", "available_tools", "memory_context", "conversation_history", "current_task", "active_sessions"]:
                             # 对于这些标签，直接包含其内容而不添加额外的标签
                             text_parts.append(f"{child_text}")
                         elif child.tag in ["requirement", "guideline", "note"]:
@@ -143,6 +143,7 @@ class PromptBuilder:
         available_tools: list,
         memory_context: str = "",
         conversation_history: list = None,
+        active_sessions: list | None = None,
     ) -> str:
         """构建ReAct提示词"""
         logger.debug(f"构建ReAct提示词，current_task: {current_task}")
@@ -151,7 +152,8 @@ class PromptBuilder:
         conversation_text = self._format_conversation_history(
             conversation_history or []
         )
-
+        active_sessions_text = self._format_active_sessions(active_sessions or [])
+ 
         return self.loader.format_prompt(
             "react_core",
             current_task=current_task,
@@ -159,6 +161,7 @@ class PromptBuilder:
             available_tools=tools_description,
             memory_context=memory_context,
             conversation_history=conversation_text,
+            active_sessions=active_sessions_text,
         )
 
     def build_summarizer_prompt(
@@ -236,7 +239,7 @@ class PromptBuilder:
         """格式化对话历史"""
         if not conversation_history:
             return "暂无对话历史"
-
+ 
         formatted_history = []
         # 显示所有传入的对话历史（截断逻辑由main.py统一处理）
         for entry in conversation_history:
@@ -246,8 +249,18 @@ class PromptBuilder:
                 formatted_history.append(f"用户: {content}")
             elif role == "assistant":
                 formatted_history.append(f"助手: {content}")
-
+ 
         return "\n".join(formatted_history)
+
+    def _format_active_sessions(self, sessions: list) -> str:
+        """格式化在线会话列表"""
+        if not sessions:
+            return "无其他在线会话"
+        # 按行展示，避免模型误解为结构化JSON
+        lines = []
+        for sid in sessions:
+            lines.append(f"- {sid}")
+        return "\n".join(lines)
 
 
 # 全局提示词管理器实例

@@ -107,3 +107,12 @@ sessions:
       - type: "ask_time"
         interval_seconds: 30
         enabled: true
+
+# 轻量消息总线与会话发现（可选）
+# 若未配置则默认连接到本地 Redis
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  db: 0
+  password: ""
+  prefix: "stock_cli"

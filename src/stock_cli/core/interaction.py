@@ -16,6 +16,8 @@ from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from ..agent.runtime import ensure_kernel, get_kernel, current_model
 from ..core.session import SessionManager
 from ..utils.display import show_help, show_status, print_banner
+from ..utils.redis_bus import RedisBus
+from ..core.config_resolver import resolve_triggers_path, load_triggers_config
 
 console = Console()
 
@@ -137,6 +139,7 @@ async def _interactive(
     output_format: str = "text",
     timeout: int = 30,
     session_id: str = "default",
+    triggers_path: Optional[str] = None,
 ):
     """交互式 CLI 主循环"""
     # 确保 Agent kernel 可用
@@ -153,6 +156,78 @@ async def _interactive(
         console.print("[red]初始化核心服务失败[/red]")
         raise typer.Exit(1)
 
+    # 注册在线会话并启动“会话收件箱”触发器（被动监听通信）
+    inbox_task: Optional[asyncio.Task] = None
+    other_trigger_tasks: List[asyncio.Task] = []
+
+    async def _shutdown_inbox_and_unregister():
+        nonlocal inbox_task, other_trigger_tasks
+        try:
+            if inbox_task:
+                inbox_task.cancel()
+                try:
+                    await inbox_task
+                except Exception:
+                    pass
+            # 停止额外触发器
+            if other_trigger_tasks:
+                for t in other_trigger_tasks:
+                    try:
+                        t.cancel()
+                    except Exception:
+                        pass
+                try:
+                    await asyncio.gather(*other_trigger_tasks, return_exceptions=True)
+                except Exception:
+                    pass
+        finally:
+            try:
+                await RedisBus.unregister_session(session_id)
+            except Exception:
+                pass
+            try:
+                await RedisBus.cleanup()
+            except Exception:
+                pass
+
+    # 标记会话在线
+    try:
+        await RedisBus.register_session(session_id)
+    except Exception:
+        pass
+
+    # 启动会话收件箱触发器（后台任务），仅当触发器已注册时
+    try:
+        from ..triggers import auto_discover, get as get_trigger
+        auto_discover()
+        inbox = get_trigger("session_inbox")
+        if inbox:
+            inbox_task = asyncio.create_task(inbox(session_id, {}))
+    except Exception:
+        # 忽略触发器启动失败，保持chat主流程
+        pass
+
+    # 若传入 --trigger/--triggers 配置，则按配置启动额外触发器（与 trigger 命令一致的解析方式）
+    if triggers_path:
+        try:
+            t_path = resolve_triggers_path(triggers_path)
+            t_conf = load_triggers_config(t_path)
+            trig_list = t_conf.get("triggers", [])
+            if isinstance(trig_list, list) and trig_list:
+                from ..triggers import get as get_trigger
+                for spec in trig_list:
+                    if not spec.get("enabled", False):
+                        continue
+                    t_type = spec.get("type")
+                    trigger_func = get_trigger(t_type)
+                    if not trigger_func:
+                        continue
+                    params = spec.get("params", {})
+                    other_trigger_tasks.append(asyncio.create_task(trigger_func(session_id, params)))
+        except Exception:
+            # 解析或启动失败不影响chat主流程
+            pass
+
     active_model = current_model() or "unknown"
     if once:
         if verbose:
@@ -167,10 +242,9 @@ async def _interactive(
         except asyncio.CancelledError:
             # 任务被取消
             console.print("[yellow]任务已被停止[/yellow]")
-            return
+            # 继续进行资源清理
         except Exception as e:  # noqa: BLE001
             console.print(f"[red]Execution failed: {e}")
-            return
         finally:
             # 确保在一次性模式结束时优雅关闭 MCP，避免 anyio 作用域关闭报错
             try:
@@ -179,8 +253,13 @@ async def _interactive(
                 await mgr.cleanup()
             except Exception:
                 pass
+            # 关闭收件箱并注销在线会话
+            try:
+                await _shutdown_inbox_and_unregister()
+            except Exception:
+                pass
         # 最终答案已经通过XML状态机流式输出，无需额外处理
-
+ 
         # 推理过程已经实时显示，不再重复显示
         return
 
@@ -199,11 +278,19 @@ async def _interactive(
                 await _cleanup_mcp_resources()
             except Exception:
                 pass
+            try:
+                await _shutdown_inbox_and_unregister()
+            except Exception:
+                pass
             break
         except EOFError:
             console.print("\n[yellow]Bye![/yellow]")
             try:
                 await _cleanup_mcp_resources()
+            except Exception:
+                pass
+            try:
+                await _shutdown_inbox_and_unregister()
             except Exception:
                 pass
             break
@@ -216,6 +303,10 @@ async def _interactive(
             console.print("[yellow]Bye![/yellow]")
             try:
                 await _cleanup_mcp_resources()
+            except Exception:
+                pass
+            try:
+                await _shutdown_inbox_and_unregister()
             except Exception:
                 pass
             break

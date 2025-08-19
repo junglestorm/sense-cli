@@ -13,6 +13,7 @@ class FilterState(Enum):
     OUTSIDE = "outside"  # 在标签外
     IN_THINKING = "in_thinking"  # 在<thinking>标签内
     IN_ACTION = "in_action"  # 在<action>标签内
+    IN_COMMUNICATION = "in_communication"  # 在<communication>标签内
     IN_FINAL = "in_final"  # 在<final_answer>标签内
     SKIP_TAG = "skip_tag"  # 跳过标签本身
 
@@ -64,6 +65,9 @@ class XMLStreamFilter:
                         elif tag_name == "action":
                             self.state = FilterState.IN_ACTION
                             section_type = "action"
+                        elif tag_name == "communication":
+                            self.state = FilterState.IN_COMMUNICATION
+                            section_type = "communication"
                         elif tag_name == "final_answer":
                             self.state = FilterState.IN_FINAL
                             section_type = "final_answer"
@@ -74,6 +78,8 @@ class XMLStreamFilter:
                             and self.state == FilterState.IN_THINKING
                             or tag_name == "action"
                             and self.state == FilterState.IN_ACTION
+                            or tag_name == "communication"
+                            and self.state == FilterState.IN_COMMUNICATION
                             or tag_name == "final_answer"
                             and self.state == FilterState.IN_FINAL
                         ):
@@ -82,6 +88,8 @@ class XMLStreamFilter:
                                 section_type = "final_answer_end"
                             elif tag_name == "action":
                                 section_type = "action_end"
+                            elif tag_name == "communication":
+                                section_type = "communication_end"
                             elif tag_name == "thinking":
                                 section_type = "thinking_end"
 
@@ -94,6 +102,7 @@ class XMLStreamFilter:
             if self.state in [
                 FilterState.IN_THINKING,
                 FilterState.IN_ACTION,
+                FilterState.IN_COMMUNICATION,
                 FilterState.IN_FINAL,
             ]:
                 result += char
@@ -102,6 +111,8 @@ class XMLStreamFilter:
                         section_type = "thinking"
                     elif self.state == FilterState.IN_ACTION:
                         section_type = "action"
+                    elif self.state == FilterState.IN_COMMUNICATION:
+                        section_type = "communication"
                     elif self.state == FilterState.IN_FINAL:
                         section_type = "final_answer"
 
@@ -128,6 +139,8 @@ class XMLStreamFilter:
             return "thinking"
         elif self.state == FilterState.IN_ACTION:
             return "action"
+        elif self.state == FilterState.IN_COMMUNICATION:
+            return "communication"
         elif self.state == FilterState.IN_FINAL:
             return "final_answer"
         return None

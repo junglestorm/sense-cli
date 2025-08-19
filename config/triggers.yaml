@@ -4,12 +4,7 @@
 # 入口不负责定时/轮询策略，具体参数通过 params 传入各自触发器，由触发器内部解释
 
 triggers:
-  # 示例一：定时询问时间（ask_time）
-  - name: "ask-time-every-15s"
-    type: "ask_time"      # 触发器类型，需与 src/stock_cli/triggers/ 下实现对应
-    enabled: true
-    params:
-      interval_seconds: 15 # 由 ask_time 触发器解释的定时间隔（秒）
+  
 
   # 示例二：会话收件箱（被动监听来自其他会话的通信）
   - name: "session-inbox"

@@ -93,24 +93,28 @@ class Session:
         # 3. available_tools
         if ctx.get("available_tools"):
             messages.append(ctx["available_tools"])
-
+ 
         # 4. memory_context
         if ctx.get("memory_context"):
             messages.append(ctx["memory_context"])
-
+ 
+        # 4.5 active_sessions（动态发现的在线会话列表，供模型感知通信对象）
+        if ctx.get("active_sessions"):
+            messages.append(ctx["active_sessions"])
+ 
         # 5. react_prompt
         if ctx.get("react_prompt"):
             messages.append(ctx["react_prompt"])
-
+ 
         # 6. qa_history
         qa_history = ctx.get("qa_history", [])
         if isinstance(qa_history, list):
             messages.extend([m for m in qa_history if isinstance(m, dict) and m.get("role") in ("user", "assistant") and m.get("content")])
-
+ 
         # 7. 当前任务描述
         if task and getattr(task, "description", None):
             messages.append({"role": "user", "content": task.description})
-
+ 
         # 8. scratchpad（task链路）
         if scratchpad:
             messages.extend(scratchpad)
@@ -200,3 +204,29 @@ class SessionManager:
 
     def all_sessions(self) -> List[str]:
         return list(self._sessions.keys())
+
+    # -------- 扩展：会话发现与注册（基于轻量消息总线） --------
+    async def register_session_to_redis(self, session_id: str) -> None:
+        """将会话注册到在线集合，便于其他会话发现"""
+        try:
+            from ..utils.redis_bus import RedisBus
+            await RedisBus.register_session(session_id)
+        except Exception:
+            # 注册失败不影响主流程
+            pass
+
+    async def unregister_session_from_redis(self, session_id: str) -> None:
+        """从在线集合注销会话"""
+        try:
+            from ..utils.redis_bus import RedisBus
+            await RedisBus.unregister_session(session_id)
+        except Exception:
+            pass
+
+    async def get_active_sessions_from_redis(self) -> List[str]:
+        """获取所有在线会话ID列表"""
+        try:
+            from ..utils.redis_bus import RedisBus
+            return await RedisBus.list_active_sessions()
+        except Exception:
+            return []

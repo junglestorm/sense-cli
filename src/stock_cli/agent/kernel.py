@@ -15,6 +15,7 @@ from ..core.types import AgentConfig, Task, TaskStatus,Context,Scratchpad
 from ..tools.mcp_server_manager import MCPServerManager
 from .events import ReActEvent, ReActEventType, ProgressCallbackAdapter
 from .xml_filter import XMLStreamFilter
+from ..utils.redis_bus import RedisBus
 
 logger = logging.getLogger(__name__)
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -33,6 +34,7 @@ class AgentKernel:
         self.config = config
         self._last_action_payload: str = ""
         self._last_final_answer: str = ""
+        self._last_communication_payload: str = ""
         self.scratchpad: list = []
  
     # ---------------- 公共入口 ----------------
@@ -85,12 +87,19 @@ class AgentKernel:
 
             qa_history = ctx.get("qa_history", [])
 
+            # 动态获取在线会话列表，注入到 ReAct 提示中供模型感知与选择
+            try:
+                active_sessions = await RedisBus.list_active_sessions()
+            except Exception:
+                active_sessions = []
+
             react_prompt_text = self.prompt_builder.build_react_prompt(
                 current_task=task.description,
                 scratchpad=self.scratchpad,
                 available_tools=tools_for_prompt,
                 memory_context=memory_ctx_content,
                 conversation_history=qa_history,
+                active_sessions=active_sessions,
             )
             # 将完整的 ReAct 提示作为 system 消息注入，驱动模型严格输出<thinking>/<action>/<final_answer>
             self.session.context["react_prompt"] = {"role": "system", "content": react_prompt_text}
@@ -147,6 +156,16 @@ class AgentKernel:
             # 每轮开始时重置上次流标记，避免旧的 action/final 干扰本轮分支判断
             await self._reset_stream_markers()
 
+            # 动态注入在线会话信息供模型感知
+            try:
+                active_sessions = await RedisBus.list_active_sessions()
+                if isinstance(active_sessions, list):
+                    bullet = "\n".join([f"- {sid}" for sid in active_sessions]) if active_sessions else "无其他在线会话"
+                    self.session.context["active_sessions"] = {"role": "system", "content": f"在线会话:\n{bullet}"}
+            except Exception:
+                # 忽略注入失败，保证主流程
+                pass
+
             # 单次模型调用
             
             # 由session负责构建LLM输入消息
@@ -176,10 +195,12 @@ class AgentKernel:
     ) -> Optional[str]:
         """case风格处理 final_answer、action、fallback 三种情况"""
         action_name, action_args = self._parse_action_json(self._last_action_payload)
+        comm_target, comm_message = self._parse_communication_json(self._last_communication_payload)
         cases = {
             "final_answer": bool(self._last_final_answer),
             "action": bool(action_name and self._last_action_payload),
-            "fallback": not self._last_final_answer and not action_name,
+            "communication": bool(comm_target and self._last_communication_payload),
+            "fallback": not self._last_final_answer and not action_name and not comm_target,
         }
         # case: final_answer
         if cases["final_answer"]:
@@ -199,6 +220,32 @@ class AgentKernel:
             
             return None  # 继续下一轮
 
+        # case: communication
+        if cases["communication"]:
+            # 记录通信调用
+            comm_json = json.dumps({"communication": {"target": comm_target, "message": comm_message}}, ensure_ascii=False)
+            self.session.append_qa({"role": "assistant", "content": comm_json})
+            try:
+                subs = await RedisBus.publish_message(self.session.session_id, comm_target, comm_message)
+                observation = f"Communication sent to '{comm_target}'. subscribers={subs}"
+            except Exception as e:
+                observation = f"ERROR: communication failed: {e}"
+
+            # 注入到 scratchpad，供下一轮分析
+            self.scratchpad.append({
+                "role": "assistant",
+                "content": f"Communication: {comm_json}"
+            })
+            self.scratchpad.append({
+                "role": "user",
+                "content": f"Observation: {observation}"
+            })
+
+            await event_adapter.emit(
+                ReActEvent(ReActEventType.STREAM_CHUNK, {"content": observation, "type": "observation"})
+            )
+            return None  # 继续下一轮
+
         # case: fallback
         if cases["fallback"]:
             fallback_raw = self._extract_fallback_final(response_text)
@@ -206,7 +253,7 @@ class AgentKernel:
             self.scratchpad.append({
                 "role": "user",
                 "content": (
-                    "上一次输出未提供 <action> 或 <final_answer>。请严格按照系统提示中的XML输出格式，仅输出 <thinking> + (<action> 或 <final_answer>)，不要输出其它说明文字。"
+                    "上一次输出未提供 <action>、<communication> 或 <final_answer>。请严格按照系统提示中的XML输出格式，仅输出 <thinking> + (<action> / <communication> 或 <final_answer>)，不要输出其它说明文字。"
                 )
             })
             return None
@@ -228,6 +275,7 @@ class AgentKernel:
         collected: List[str] = []
         thinking_buf: List[str] = []
         action_buf: List[str] = []
+        communication_buf: List[str] = []
         final_buf: List[str] = []
         thought_shown = action_shown = final_shown = False
 
@@ -254,11 +302,16 @@ class AgentKernel:
                 # buffer collect
                 if section == "action" and filtered:
                     action_buf.append(filtered)
+                elif section == "communication" and filtered:
+                    communication_buf.append(filtered)
                 elif section == "final_answer" and filtered:
                     final_buf.append(filtered)
                 elif section == "action_end":
                     self._last_action_payload = "".join(action_buf).strip()
                     break  # 早停：去执行工具
+                elif section == "communication_end":
+                    self._last_communication_payload = "".join(communication_buf).strip()
+                    break  # 早停：去执行通信
                 elif section == "final_answer_end":
                     # 捕获最终答案并提前结束流，避免继续等待无用 token 造成延迟
                     self._last_final_answer = "".join(final_buf).strip()
@@ -275,6 +328,8 @@ class AgentKernel:
             # 收尾兜底（未遇到 *_end 标签）
             if action_buf and not self._last_action_payload:
                 self._last_action_payload = "".join(action_buf).strip()
+            if communication_buf and not self._last_communication_payload:
+                self._last_communication_payload = "".join(communication_buf).strip()
             if final_buf and not self._last_final_answer:
                 self._last_final_answer = "".join(final_buf).strip()
             return "".join(collected)
@@ -373,6 +428,7 @@ class AgentKernel:
 
     async def _reset_stream_markers(self):
         self._last_action_payload = ""
+        self._last_communication_payload = ""
         self._last_final_answer = ""
 
     def _parse_action_json(self, raw: str) -> Tuple[str, Dict[str, Any]]:
@@ -390,12 +446,33 @@ class AgentKernel:
         except Exception:
             return "", {}
 
+    def _parse_communication_json(self, raw: str) -> Tuple[str, str]:
+        if not raw:
+            return "", ""
+        cleaned = raw.strip()
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        try:
+            obj = json.loads(cleaned)
+            if isinstance(obj, dict):
+                target = str(obj.get("target") or "").strip()
+                message = str(obj.get("message") or "").strip()
+                if target and message:
+                    return target, message
+        except Exception:
+            return "", ""
+        return "", ""
+
     def _extract_fallback_final(self, response: str) -> str:
-        # 去掉 action json 片段，只返回可读文本
+        # 去掉 action/communication json 片段，只返回可读文本
         if self._last_action_payload:
             try:
-                # 删除 action json 片段
                 response = response.replace(self._last_action_payload, "")
+            except Exception:  # noqa: BLE001
+                pass
+        if self._last_communication_payload:
+            try:
+                response = response.replace(self._last_communication_payload, "")
             except Exception:  # noqa: BLE001
                 pass
         return response.strip() or "任务完成"

@@ -11,6 +11,7 @@ from ..core.config_resolver import (
 )
 from ..triggers import get, list_triggers, auto_discover
 from ..tools.mcp_server_manager import MCPServerManager
+from ..utils.redis_bus import RedisBus
 
 console = Console()
 app = typer.Typer()
@@ -20,7 +21,7 @@ def trigger(
     trigger_type: str = typer.Option(None, "--type", "-t", help="触发器类型"),
     session_id: str = typer.Option("default", "--session-id", "-s", help="会话ID"),
     config_path: Optional[str] = typer.Option(None, "--config", help="主配置文件路径（可选）"),
-    triggers_path: Optional[str] = typer.Option(None, "--triggers", help="触发器配置文件路径（优先使用）"),
+    triggers_path: Optional[str] = typer.Option(None, "--triggers", "--trigger", help="触发器配置文件路径（优先使用）"),
 ):
     """启动指定类型的触发器"""
     asyncio.run(main(trigger_type, session_id, config_path, triggers_path))
@@ -32,6 +33,11 @@ async def main(trigger_type: str, session_id: str, config_path: Optional[str], t
         auto_discover()
         # 预先初始化 MCP 管理器，确保上下文在同一任务中进入与退出
         _ = await MCPServerManager.get_instance()
+        # 将该 session 标记为在线，便于被其他会话动态发现
+        try:
+            await RedisBus.register_session(session_id)
+        except Exception:
+            pass
         # 诊断日志：显示当前已注册的触发器（用于验证是否依赖显式导入）
         console.print(f"[cyan]已注册触发器: {', '.join(list_triggers()) or '(none)'}[/cyan]")
         if trigger_type:
@@ -39,6 +45,15 @@ async def main(trigger_type: str, session_id: str, config_path: Optional[str], t
         else:
             await _start_triggers_from_config(session_id, config_path, triggers_path)
     finally:
+        # 注销在线会话与清理资源
+        try:
+            await RedisBus.unregister_session(session_id)
+        except Exception:
+            pass
+        try:
+            await RedisBus.cleanup()
+        except Exception:
+            pass
         await _cleanup_resources()
 
 
