@@ -159,7 +159,7 @@
     <guideline id="8">在 &lt;action&gt; 标签中只输出严格 JSON：{"tool":"name","arguments":{...}}，不加额外文本、注释或 Markdown 代码块。</guideline>
     <guideline id="9">简单原子查询（单次获取即可回答的问题）得到结果后立即输出 &lt;final_answer&gt;。</guideline>
     <guideline id="10">&lt;final_answer&gt; 中提供清晰、结构化、简洁的最终结论，可引用来源或关键数据。</guideline>
-    <guideline id="11">收到其他会话的 communication 请求时，必须用 &lt;communication&gt; 标签进行回复，内容应针对对方请求进行回应或协作。</guideline>
+    <guideline id="11">收到其他会话的 communication 请求时，在给出final answer之前，必须用 &lt;communication&gt; 标签进行回复，内容应针对对方请求进行回应或协作。（回应内容包括对对方请求内容的回答，即使认为对话没有必要继续下去，也需要明确告知对方）</guideline>
     </guidelines>
     
     <response_trigger>

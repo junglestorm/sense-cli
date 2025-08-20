@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 
-from .commands import ask, chat, tools, version, trigger
+from .commands import ask, chat, tools, version
 from .core.interaction import _interactive
 
 app = typer.Typer(add_completion=False, help="Stock Agent CLI - AI驱动的股票分析工具")
@@ -14,7 +14,6 @@ app.command()(version)
 app.command()(ask)
 app.command()(chat)
 app.command()(tools)
-app.command()(trigger)
 
 __version__ = "1.0.0"
 
@@ -40,9 +39,6 @@ def main_callback(
     from .utils.display import show_logo
     show_logo()
     
-    # 如果调用了 trigger 命令，直接返回，避免进入交互模式
-    if ctx.invoked_subcommand == "trigger":
-        return
 
     if ctx.invoked_subcommand is None:
         # 默认进入对话模式（使用回调级别的 session_id 与 debug）

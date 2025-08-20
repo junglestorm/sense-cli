@@ -32,6 +32,20 @@ def list_triggers() -> List[str]:
     return list(TRIGGER_REGISTRY.keys())
 
 
+def discover_triggers() -> Dict[str, Any]:
+    """
+    发现并返回所有可用的触发器函数
+    
+    Returns:
+        Dict[str, Any]: 触发器名称到触发器函数的映射
+    """
+    # 确保所有触发器模块都已加载
+    auto_discover()
+    
+    # 直接返回注册表中的触发器函数
+    return TRIGGER_REGISTRY.copy()
+
+
 def auto_discover() -> None:
     """
     自动发现并导入当前包下的所有触发器模块，以触发 @register 装饰器完成注册。
@@ -53,10 +67,20 @@ def auto_discover() -> None:
             logger.error(f"加载触发器模块失败: {full_name}: {e}")
 
 
+# 为兼容性提供别名
+try:
+    from ..core.config_resolver import load_triggers_config as load_trigger_config
+except ImportError:
+    # 在独立测试时提供空函数
+    def load_trigger_config(*args, **kwargs):
+        return {}
+
 __all__ = [
     "TRIGGER_REGISTRY",
     "register",
     "get",
     "list_triggers",
+    "discover_triggers",
     "auto_discover",
+    "load_trigger_config",
 ]

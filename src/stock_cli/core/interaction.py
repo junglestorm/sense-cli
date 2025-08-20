@@ -27,6 +27,10 @@ _session_manager = SessionManager()
 _current_task: Optional[asyncio.Task] = None
 _interrupt_requested = False
 
+# 触发器任务管理器
+_active_trigger_tasks: Dict[str, asyncio.Task] = {}
+_trigger_configs: Dict[str, Dict[str, Any]] = {}
+
 
 async def _run_agent_with_interrupt(
     question: str,
@@ -141,7 +145,7 @@ async def _interactive(
     output_format: str = "text",
     timeout: int = 30,
     session_id: str = "default",
-    triggers_path: Optional[str] = None,
+    triggers: Optional[List[str]] = None,
     role: Optional[str] = None,
 ):
     """交互式 CLI 主循环"""
@@ -236,26 +240,20 @@ async def _interactive(
         # 忽略触发器启动失败，保持chat主流程
         pass
 
-    # 若传入 --trigger/--triggers 配置，则按配置启动额外触发器（与 trigger 命令一致的解析方式）
-    if triggers_path:
+    # 若传入 --trigger 参数，则启动指定的触发器类型
+    if triggers:
         try:
-            t_path = resolve_triggers_path(triggers_path)
-            t_conf = load_triggers_config(t_path)
-            trig_list = t_conf.get("triggers", [])
-            if isinstance(trig_list, list) and trig_list:
-                from ..triggers import get as get_trigger
-                for spec in trig_list:
-                    if not spec.get("enabled", False):
-                        continue
-                    t_type = spec.get("type")
-                    trigger_func = get_trigger(t_type)
-                    if not trigger_func:
-                        continue
-                    params = spec.get("params", {})
-                    other_trigger_tasks.append(asyncio.create_task(trigger_func(session_id, params)))
-        except Exception:
-            # 解析或启动失败不影响chat主流程
-            pass
+            from ..triggers import get as get_trigger
+            for trigger_type in triggers:
+                trigger_func = get_trigger(trigger_type)
+                if trigger_func:
+                    # 启动触发器，使用默认参数
+                    other_trigger_tasks.append(asyncio.create_task(trigger_func(session_id, {})))
+                    console.print(f"[green]已启动触发器: {trigger_type}[/green]")
+                else:
+                    console.print(f"[yellow]警告: 未找到触发器类型 '{trigger_type}'[/yellow]")
+        except Exception as e:
+            console.print(f"[yellow]启动触发器失败: {e}[/yellow]")
 
     active_model = current_model() or "unknown"
     if once:
@@ -310,6 +308,7 @@ async def _interactive(
                 pass
             try:
                 await _shutdown_inbox_and_unregister()
+                await _cleanup_all_triggers()
             except Exception:
                 pass
             break
@@ -321,6 +320,7 @@ async def _interactive(
                 pass
             try:
                 await _shutdown_inbox_and_unregister()
+                await _cleanup_all_triggers()
             except Exception:
                 pass
             break
@@ -337,6 +337,7 @@ async def _interactive(
                 pass
             try:
                 await _shutdown_inbox_and_unregister()
+                await _cleanup_all_triggers()
             except Exception:
                 pass
             break
@@ -352,6 +353,9 @@ async def _interactive(
         elif user_input == "/version":
             from ..cli import __version__
             console.print(f"Stock Agent CLI v{__version__}")
+            continue
+        elif user_input.startswith("/trigger"):
+            await _handle_trigger_command(user_input)
             continue
 
         try:
@@ -378,4 +382,151 @@ async def _interactive(
             pass
 
 
+async def _handle_trigger_command(command: str) -> None:
+    """处理 /trigger 命令"""
+    from rich.table import Table
+    
+    parts = command.split()
+    if len(parts) < 2:
+        console.print("[yellow]用法: /trigger [start|stop|list|status] [trigger_name]")
+        console.print("[yellow]示例:")
+        console.print("[yellow]  /trigger list - 列出所有可用触发器")
+        console.print("[yellow]  /trigger start timer_5min - 启动定时器触发器")
+        console.print("[yellow]  /trigger stop timer_5min - 停止定时器触发器")
+        console.print("[yellow]  /trigger status - 显示触发器状态")
+        return
+    
+    action = parts[1].lower()
+    
+    if action == "list":
+        # 列出所有可用触发器
+        from ..triggers import discover_triggers
+        triggers = discover_triggers()
+        
+        table = Table(title="可用触发器")
+        table.add_column("名称", style="cyan")
+        table.add_column("类型", style="green")
+        table.add_column("描述", style="white")
+        
+        for trigger_name, trigger_cls in triggers.items():
+            table.add_row(trigger_name, trigger_cls.__name__, getattr(trigger_cls, "__doc__", "无描述") or "无描述")
+        
+        console.print(table)
+        
+    elif action == "start":
+        if len(parts) < 3:
+            console.print("[red]错误: 需要指定触发器名称")
+            return
+        
+        trigger_name = parts[2]
+        await _start_trigger(trigger_name)
+        
+    elif action == "stop":
+        if len(parts) < 3:
+            console.print("[red]错误: 需要指定触发器名称")
+            return
+        
+        trigger_name = parts[2]
+        await _stop_trigger(trigger_name)
+        
+    elif action == "status":
+        await _show_trigger_status()
+        
+    else:
+        console.print(f"[red]错误: 未知操作 '{action}'")
+
+
+async def _start_trigger(trigger_name: str) -> None:
+    """启动指定触发器"""
+    from ..triggers import discover_triggers, load_trigger_config
+    
+    triggers = discover_triggers()
+    if trigger_name not in triggers:
+        console.print(f"[red]错误: 找不到触发器 '{trigger_name}'")
+        return
+    
+    # 检查是否已经启动
+    if trigger_name in _active_trigger_tasks:
+        console.print(f"[yellow]警告: 触发器 '{trigger_name}' 已经在运行")
+        return
+    
+    # 加载配置
+    config = load_trigger_config()
+    trigger_config = config.get(trigger_name)
+    if not trigger_config:
+        console.print(f"[red]错误: 找不到触发器 '{trigger_name}' 的配置")
+        return
+    
+    trigger_cls = triggers[trigger_name]
+    try:
+        trigger_instance = trigger_cls(trigger_config)
+        task = asyncio.create_task(trigger_instance.run())
+        _active_trigger_tasks[trigger_name] = task
+        _trigger_configs[trigger_name] = trigger_config
+        console.print(f"[green]已启动触发器: {trigger_name}")
+    except Exception as e:
+        console.print(f"[red]启动触发器失败: {e}")
+
+
+async def _stop_trigger(trigger_name: str) -> None:
+    """停止指定触发器"""
+    if trigger_name not in _active_trigger_tasks:
+        console.print(f"[yellow]警告: 触发器 '{trigger_name}' 未在运行")
+        return
+    
+    task = _active_trigger_tasks[trigger_name]
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        console.print(f"[yellow]停止触发器时出现异常: {e}")
+    
+    del _active_trigger_tasks[trigger_name]
+    if trigger_name in _trigger_configs:
+        del _trigger_configs[trigger_name]
+    
+    console.print(f"[green]已停止触发器: {trigger_name}")
+
+
+async def _show_trigger_status() -> None:
+    """显示触发器状态"""
+    from rich.table import Table
+    
+    table = Table(title="触发器状态")
+    table.add_column("名称", style="cyan")
+    table.add_column("状态", style="green")
+    table.add_column("类型", style="yellow")
+    
+    # 显示正在运行的触发器
+    for trigger_name in _active_trigger_tasks:
+        config = _trigger_configs.get(trigger_name, {})
+        trigger_type = config.get("type", "unknown")
+        table.add_row(trigger_name, "运行中", trigger_type)
+    
+    # 显示所有可用的触发器类型
+    from ..triggers import auto_discover, discover_triggers
+    auto_discover()  # 确保所有触发器都已注册
+    available_triggers = discover_triggers()
+    for trigger_name in available_triggers:
+        if trigger_name not in _active_trigger_tasks:
+            table.add_row(trigger_name, "已停止", "触发器")
+    
+    console.print(table)
+
+
+async def _cleanup_all_triggers() -> None:
+    """清理所有触发器任务"""
+    for trigger_name, task in list(_active_trigger_tasks.items()):
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+        del _active_trigger_tasks[trigger_name]
+    
+    _trigger_configs.clear()
 
