@@ -1,4 +1,4 @@
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import json
 import logging
 from pathlib import Path
@@ -19,7 +19,7 @@ TOOL_POLICY = (
 
 
 class Session:
-    def __init__(self, session_id: str):
+    def __init__(self, session_id: str, role_config: Optional[Dict[str, Any]] = None):
         self.session_id = session_id
         self._context: Context = self._default_context()
         # session 级别的上下文持久化文件（每个 session 一个文件）
@@ -32,6 +32,10 @@ class Session:
         self._load_context_from_disk()
         # 触发器引用表（运行期使用，不参与持久化）
         self.triggers: Dict[str, Any] = {}
+        
+        # 注入角色配置
+        if role_config:
+            self._inject_role_config(role_config)
 
     def _default_context(self) -> Context:
         return {
@@ -71,6 +75,18 @@ class Session:
             elif k in ctx and isinstance(ctx[k], dict) and "role" in ctx[k] and "content" in ctx[k]:
                 new_ctx[k] = ctx[k]
         self._context = new_ctx
+
+    def _inject_role_config(self, role_config: Dict[str, Any]):
+        """注入角色配置到系统提示词"""
+        try:
+            if role_config.get("system_prompt"):
+                self._context["system_prompt"]["content"] = role_config["system_prompt"]
+            if role_config.get("persona"):
+                # 将角色描述添加到系统提示词
+                persona_text = f"\n\n角色设定: {role_config['persona']}"
+                self._context["system_prompt"]["content"] += persona_text
+        except Exception as e:
+            logger.warning("注入角色配置失败 session_id=%s err=%r", self.session_id, e)
 
 
     def build_llm_messages(self, task: Task, scratchpad: list = None) -> List[Message]:
@@ -193,9 +209,12 @@ class SessionManager:
     def __init__(self):
         self._sessions: Dict[str, Session] = {}
 
-    def get_session(self, session_id: str) -> Session:
+    def get_session(self, session_id: str, role_config: Optional[Dict[str, Any]] = None) -> Session:
         if session_id not in self._sessions:
-            self._sessions[session_id] = Session(session_id)
+            self._sessions[session_id] = Session(session_id, role_config)
+        elif role_config:
+            # 如果会话已存在但有新的角色配置，重新注入
+            self._sessions[session_id]._inject_role_config(role_config)
         return self._sessions[session_id]
 
     def remove_session(self, session_id: str):
@@ -230,3 +249,4 @@ class SessionManager:
             return await RedisBus.list_active_sessions()
         except Exception:
             return []
+

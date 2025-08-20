@@ -1,25 +1,63 @@
-"""会话管理器，支持根据配置自动启动触发器"""
+"""会话管理器，支持根据配置自动启动触发器和角色管理"""
 
 import asyncio
 import logging
-from typing import Dict, Any, Optional
+import yaml
+from pathlib import Path
+from typing import Dict, Any, Optional, List
 
 from .session import SessionManager as BaseSessionManager
-from ..triggers import TRIGGER_REGISTRY, SCHEDULER_REGISTRY, get_scheduler
+from ..triggers import TRIGGER_REGISTRY
 
 logger = logging.getLogger(__name__)
 
 
 class SessionManager:
-    """扩展的会话管理器，支持触发器模式"""
+    """扩展的会话管理器，支持触发器模式和角色配置"""
     
     def __init__(self):
         self._base_manager = BaseSessionManager()
         self._trigger_tasks: Dict[str, asyncio.Task] = {}
+        self._role_configs: Dict[str, Dict[str, Any]] = {}
         
     def get_session(self, session_id: str) -> Any:
         """获取会话实例"""
         return self._base_manager.get_session(session_id)
+    
+    def load_role_configs(self, roles_config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """加载所有角色配置"""
+        role_configs = {}
+        roles_path = Path(roles_config.get("path", "prompts/"))
+        
+        for role_info in roles_config.get("available", []):
+            role_name = role_info["name"]
+            role_file = role_info["file"]
+            role_path = roles_path / role_file
+            
+            try:
+                if role_path.exists():
+                    with open(role_path, "r", encoding="utf-8") as f:
+                        role_config = yaml.safe_load(f) or {}
+                    role_configs[role_name] = role_config
+                    logger.info(f"已加载角色配置: {role_name}")
+                else:
+                    logger.warning(f"角色配置文件不存在: {role_path}")
+            except Exception as e:
+                logger.error(f"加载角色配置 {role_name} 失败: {e}")
+        
+        self._role_configs = role_configs
+        return role_configs
+    
+    def get_role_config(self, role_name: str) -> Optional[Dict[str, Any]]:
+        """获取指定角色的配置"""
+        return self._role_configs.get(role_name)
+    
+    def get_available_roles(self) -> List[Dict[str, str]]:
+        """获取可用角色列表"""
+        return [
+            {"name": name, "description": config.get("description", "")}
+            for name, config in self._role_configs.items()
+        ]
     
     async def start_session_triggers(self, session_id: str, session_config: Dict[str, Any]):
         """根据会话配置启动触发器"""
@@ -51,11 +89,11 @@ class SessionManager:
         """运行单个触发器"""
         try:
             # 通过注册机制获取并运行触发器
-            scheduler_func = get_scheduler(trigger_type)
-            if scheduler_func:
-                await scheduler_func(session_id, trigger_config)
+            trigger_func = TRIGGER_REGISTRY.get(trigger_type)
+            if trigger_func:
+                await trigger_func(session_id, trigger_config)
             else:
-                logger.warning(f"触发器 {trigger_type} 没有注册调度器函数")
+                logger.warning(f"触发器 {trigger_type} 没有注册触发器函数")
         except Exception as e:
             logger.error(f"运行触发器 {trigger_type} 时出错: {e}")
     

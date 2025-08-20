@@ -5,7 +5,7 @@ Agent运行时模块：管理AgentKernel实例的生命周期
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from .kernel import AgentKernel
 from ..core.prompt_loader import prompt_builder
@@ -37,8 +37,8 @@ def get_session_manager() -> SessionManager:
     return _session_manager
 
 
-async def ensure_kernel(session_id: str = "default") -> AgentKernel:
-    """确保获取AgentKernel实例（懒加载 + 单例）"""
+async def ensure_kernel(session_id: str = "default", role_config: Optional[Dict[str, Any]] = None) -> AgentKernel:
+    """确保获取AgentKernel实例（懒加载 + 单例），支持可选的角色配置注入"""
     global _kernel, _current_model
     if _kernel is not None:
         return _kernel
@@ -87,7 +87,7 @@ async def ensure_kernel(session_id: str = "default") -> AgentKernel:
         # 初始化核心组件
         # 创建SessionManager
         session_manager = get_session_manager()
-        session = session_manager.get_session(session_id)
+        session = session_manager.get_session(session_id, role_config)
 
         # 创建Agent配置
         agent_config = AgentConfig(

@@ -5,6 +5,7 @@
 
 import asyncio
 import time
+import traceback
 from typing import Optional, List, Callable, Awaitable, Dict, Any
 
 import typer
@@ -14,10 +15,10 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 
 from ..agent.runtime import ensure_kernel, get_kernel, current_model
-from ..core.session import SessionManager
+from ..core.session_manager import SessionManager
 from ..utils.display import show_help, show_status, print_banner
 from ..utils.redis_bus import RedisBus
-from ..core.config_resolver import resolve_triggers_path, load_triggers_config
+from ..core.config_resolver import resolve_triggers_path, load_triggers_config, resolve_settings_path, load_settings
 
 console = Console()
 
@@ -33,12 +34,13 @@ async def _run_agent_with_interrupt(
     capture_steps: bool = False,
     minimal: bool = False,
     session_id: str = "default",
+    role_config: Optional[Dict[str, Any]] = None,
 ) -> dict:
     """运行Agent任务并支持中断"""
     global _current_task, _interrupt_requested
 
     _interrupt_requested = False
-    kernel = await ensure_kernel(session_id=session_id)
+    kernel = await ensure_kernel(session_id=session_id, role_config=role_config)
     start_t = time.time()
     progress_lines: List[str] = []
 
@@ -140,11 +142,34 @@ async def _interactive(
     timeout: int = 30,
     session_id: str = "default",
     triggers_path: Optional[str] = None,
+    role: Optional[str] = None,
 ):
     """交互式 CLI 主循环"""
+    # 加载角色配置
+    role_config = None
+    if role:
+        try:
+            # 加载设置文件获取角色配置
+            settings_path = resolve_settings_path()
+            settings = load_settings(settings_path)
+            roles_config = settings.get("roles", {})
+            
+            # 加载所有角色配置
+            _session_manager.load_role_configs(roles_config)
+            
+            # 获取指定角色配置
+            role_config = _session_manager.get_role_config(role)
+            if not role_config:
+                console.print(f"[yellow]警告: 未找到角色 '{role}' 的配置[/yellow]")
+            else:
+                console.print(f"[green]已加载角色: {role}[/green]")
+                
+        except Exception as e:
+            console.print(f"[yellow]警告: 加载角色配置失败: {e}[/yellow]")
+
     # 确保 Agent kernel 可用
     try:
-        await ensure_kernel(session_id=session_id)
+        await ensure_kernel(session_id=session_id, role_config=role_config)
         kernel_ref = get_kernel()  # 获取kernel实例以供后续使用
         # 预初始化 MCP 管理器，确保在同一任务中 enter/exit，避免 anyio cancel scope 错误
         try:
@@ -152,8 +177,12 @@ async def _interactive(
             await MCPServerManager.get_instance()
         except Exception:
             pass
-    except Exception:
-        console.print("[red]初始化核心服务失败[/red]")
+    except Exception as e:
+        console.print(f"[red]初始化核心服务失败: {e}[/red]")
+        try:
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        except Exception:
+            pass
         raise typer.Exit(1)
 
     # 注册在线会话并启动“会话收件箱”触发器（被动监听通信）
@@ -238,6 +267,7 @@ async def _interactive(
                 capture_steps=debug,
                 minimal=quiet or (not verbose and not debug),
                 session_id=session_id,
+                role_config=role_config,
             )
         except asyncio.CancelledError:
             # 任务被取消
@@ -330,6 +360,7 @@ async def _interactive(
                 capture_steps=debug,
                 minimal=quiet or (not verbose and not debug),
                 session_id=session_id,
+                role_config=role_config,
             )
         except asyncio.CancelledError:
             # 任务被取消，已经在_run_agent_with_interrupt中处理了

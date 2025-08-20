@@ -1,6 +1,11 @@
 # Stock Agent 配置文件示例
 # 请复制此文件为 settings.yaml 并修改相应配置
 
+name:
+  # 角色设置
+  role: "***"
+  prompt: "***"
+
 # LLM 设置
 llm:
   # DeepSeek 配置 (推荐，性价比高)
@@ -92,27 +97,17 @@ human_loop:
   # 超时时间 (秒)
   timeout: 300
 
-# 会话配置
-sessions:
-  default:
-    # 会话模式: normal (普通对话) | trigger (触发器模式)
-    mode: "normal"
-    # 触发器配置（仅在 trigger 模式下有效）
-    triggers: []
-    
-  # 示例：触发器模式会话配置
-  triggered_session:
-    mode: "trigger"
-    triggers:
-      - type: "ask_time"
-        interval_seconds: 30
-        enabled: true
 
-# 轻量消息总线与会话发现（可选）
-# 若未配置则默认连接到本地 Redis
-redis:
-  host: "127.0.0.1"
-  port: 6379
-  db: 0
-  password: ""
-  prefix: "stock_cli"
+# 角色配置
+roles:
+  # 角色配置文件目录
+  path: "prompts/"
+  
+  # 可用角色列表 (用于命令行选择)
+  available:
+    - name: "philosopher"
+      description: "哲学家 - 擅长深度思考和哲学探讨"
+      file: "philosopher.yaml"
+    - name: "storyteller" 
+      description: "故事讲述者 - 富有创造力和叙事能力"
+      file: "storyteller.yaml"

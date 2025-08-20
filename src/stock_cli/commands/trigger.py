@@ -22,12 +22,13 @@ def trigger(
     session_id: str = typer.Option("default", "--session-id", "-s", help="会话ID"),
     config_path: Optional[str] = typer.Option(None, "--config", help="主配置文件路径（可选）"),
     triggers_path: Optional[str] = typer.Option(None, "--triggers", "--trigger", help="触发器配置文件路径（优先使用）"),
+    role: Optional[str] = typer.Option(None, "--role", "-r", help="选择角色配置文件"),
 ):
     """启动指定类型的触发器"""
-    asyncio.run(main(trigger_type, session_id, config_path, triggers_path))
+    asyncio.run(main(trigger_type, session_id, config_path, triggers_path, role))
 
 
-async def main(trigger_type: str, session_id: str, config_path: Optional[str], triggers_path: Optional[str]):
+async def main(trigger_type: str, session_id: str, config_path: Optional[str], triggers_path: Optional[str], role: Optional[str]):
     try:
         # 自动发现触发器模块，避免入口与具体实现耦合
         auto_discover()
@@ -41,9 +42,9 @@ async def main(trigger_type: str, session_id: str, config_path: Optional[str], t
         # 诊断日志：显示当前已注册的触发器（用于验证是否依赖显式导入）
         console.print(f"[cyan]已注册触发器: {', '.join(list_triggers()) or '(none)'}[/cyan]")
         if trigger_type:
-            await _start_trigger_by_type(trigger_type, session_id)
+            await _start_trigger_by_type(trigger_type, session_id, role)
         else:
-            await _start_triggers_from_config(session_id, config_path, triggers_path)
+            await _start_triggers_from_config(session_id, config_path, triggers_path, role)
     finally:
         # 注销在线会话与清理资源
         try:
@@ -57,14 +58,14 @@ async def main(trigger_type: str, session_id: str, config_path: Optional[str], t
         await _cleanup_resources()
 
 
-async def _start_trigger_by_type(trigger_type: str, session_id: str):
+async def _start_trigger_by_type(trigger_type: str, session_id: str, role: Optional[str]):
     """根据类型启动单个触发器"""
     trigger_func = get(trigger_type)
     if trigger_func:
         try:
             # 只传递 session_id 和空 config，定时等逻辑由 trigger 内部决定（诊断日志）
             console.print("[blue]入口层按类型启动：不注入定时参数，config = {}[/blue]")
-            await trigger_func(session_id, {})
+            await trigger_func(session_id, {}, role)
         except KeyboardInterrupt:
             console.print("\n[green]已正常退出[/green]")
         except Exception as e:
@@ -75,7 +76,7 @@ async def _start_trigger_by_type(trigger_type: str, session_id: str):
         raise typer.Exit(1)
 
 
-async def _start_triggers_from_config(session_id: str, config_path: Optional[str], triggers_path: Optional[str]):
+async def _start_triggers_from_config(session_id: str, config_path: Optional[str], triggers_path: Optional[str], role: Optional[str]):
     try:
         # 优先：独立触发器配置文件（--triggers 或默认 config/triggers.yaml）
         try:
@@ -94,7 +95,7 @@ async def _start_triggers_from_config(session_id: str, config_path: Optional[str
                     trigger_func = get(t_type)
                     if trigger_func:
                         params = spec.get("params", {})  # 所有策略参数由 trigger 内部使用
-                        task = asyncio.create_task(trigger_func(session_id, params))
+                        task = asyncio.create_task(trigger_func(session_id, params, role))
                         tasks.append(task)
                     else:
                         console.print(f"[yellow]未知的触发器类型: {t_type}[/yellow]")
@@ -131,7 +132,7 @@ async def _start_triggers_from_config(session_id: str, config_path: Optional[str
             t_type = trigger_config.get("type")
             trigger_func = get(t_type)
             if trigger_func:
-                task = asyncio.create_task(trigger_func(session_id, trigger_config))
+                task = asyncio.create_task(trigger_func(session_id, trigger_config, role))
                 tasks.append(task)
             else:
                 console.print(f"[yellow]未知的触发器类型: {t_type}[/yellow]")
