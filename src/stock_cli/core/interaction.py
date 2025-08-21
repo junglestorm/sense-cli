@@ -236,6 +236,9 @@ async def _interactive(
         inbox = get_trigger("session_inbox")
         if inbox:
             inbox_task = asyncio.create_task(inbox(session_id, {}))
+            # 将自动启动的session_inbox也添加到全局管理器中
+            _active_trigger_tasks["session_inbox"] = inbox_task
+            _trigger_configs["session_inbox"] = {"session_id": session_id, "type": "session_inbox"}
     except Exception:
         # 忽略触发器启动失败，保持chat主流程
         pass
@@ -355,7 +358,7 @@ async def _interactive(
             console.print(f"Stock Agent CLI v{__version__}")
             continue
         elif user_input.startswith("/trigger"):
-            await _handle_trigger_command(user_input)
+            await _handle_trigger_command(user_input, session_id)
             continue
 
         try:
@@ -382,7 +385,7 @@ async def _interactive(
             pass
 
 
-async def _handle_trigger_command(command: str) -> None:
+async def _handle_trigger_command(command: str, session_id: str = "default") -> None:
     """处理 /trigger 命令"""
     from rich.table import Table
     
@@ -419,7 +422,7 @@ async def _handle_trigger_command(command: str) -> None:
             return
         
         trigger_name = parts[2]
-        await _start_trigger(trigger_name)
+        await _start_trigger(trigger_name, session_id)
         
     elif action == "stop":
         if len(parts) < 3:
@@ -436,9 +439,9 @@ async def _handle_trigger_command(command: str) -> None:
         console.print(f"[red]错误: 未知操作 '{action}'")
 
 
-async def _start_trigger(trigger_name: str) -> None:
+async def _start_trigger(trigger_name: str, session_id: str = "default") -> None:
     """启动指定触发器"""
-    from ..triggers import discover_triggers, load_trigger_config
+    from ..triggers import discover_triggers
     
     triggers = discover_triggers()
     if trigger_name not in triggers:
@@ -450,20 +453,19 @@ async def _start_trigger(trigger_name: str) -> None:
         console.print(f"[yellow]警告: 触发器 '{trigger_name}' 已经在运行")
         return
     
-    # 加载配置
-    config = load_trigger_config()
-    trigger_config = config.get(trigger_name)
-    if not trigger_config:
-        console.print(f"[red]错误: 找不到触发器 '{trigger_name}' 的配置")
-        return
+    # 使用默认配置而不是配置文件
+    trigger_config = {"session_id": session_id}
     
-    trigger_cls = triggers[trigger_name]
+    trigger_func = triggers[trigger_name]
     try:
-        trigger_instance = trigger_cls(trigger_config)
-        task = asyncio.create_task(trigger_instance.run())
-        _active_trigger_tasks[trigger_name] = task
-        _trigger_configs[trigger_name] = trigger_config
-        console.print(f"[green]已启动触发器: {trigger_name}")
+        # 对于函数类型的触发器，直接调用
+        if callable(trigger_func):
+            task = asyncio.create_task(trigger_func(session_id=session_id, config=trigger_config))
+            _active_trigger_tasks[trigger_name] = task
+            _trigger_configs[trigger_name] = trigger_config
+            console.print(f"[green]已启动触发器: {trigger_name}")
+        else:
+            console.print(f"[red]错误: 触发器 '{trigger_name}' 不是可调用函数")
     except Exception as e:
         console.print(f"[red]启动触发器失败: {e}")
 
