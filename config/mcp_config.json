@@ -8,37 +8,38 @@
       "env": {}
     },
     {
-      "name": "core_tools_server",
+      "name": "fundamental_data",
       "type": "stdio",
       "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/core_tools.py"],
+      "args": ["src/stock_cli/tools/mcp_server/fundamental_data.py"],
       "env": {}
     },
     {
-      "name": "stock_concept_tools",
+      "name": "market_context",
       "type": "stdio",
       "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/stock_concept_tools.py"],
+      "args": ["src/stock_cli/tools/mcp_server/market_context.py"],
       "env": {}
     },
     {
-      "name": "stock_individual_tools",
+      "name": "sector_dynamics",
       "type": "stdio",
-      "args": ["src/stock_cli/tools/mcp_server/stock_individual_tools.py"],
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/sector_dynamics.py"],
       "env": {}
     },
     {
-      "name": "stock_changes_tools_server",
+      "name": "stock_insight",
       "type": "stdio",
       "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/stock_changes_tools.py"],
+      "args": ["src/stock_cli/tools/mcp_server/stock_insight.py"],
       "env": {}
     },
     {
-      "name": "stock_leaderboard_tools_server",
+      "name": "stock_pool",
       "type": "stdio",
       "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/stock_leaderboard_tools.py"],
+      "args": ["src/stock_cli/tools/mcp_server/stock_pool.py"],
       "env": {}
     }
   ]

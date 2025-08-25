@@ -19,7 +19,7 @@ TOOL_POLICY = (
 
 
 class Session:
-    def __init__(self, session_id: str, role_config: Optional[Dict[str, Any]] = None):
+    def __init__(self, session_id: str, role_config: Optional[Dict[str, Any]] = None, role_name: Optional[str] = None):
         self.session_id = session_id
         self._context: Context = self._default_context()
         # session 级别的上下文持久化文件（每个 session 一个文件）
@@ -28,14 +28,22 @@ class Session:
             self._session_file.parent.mkdir(parents=True, exist_ok=True)
         except Exception:
             pass
+        
+        # 角色配置（先初始化属性，再加载磁盘上下文）
+        self.role_name = role_name
+        self.role_config: Optional[Dict[str, Any]] = None
+        
         # 若存在历史上下文文件，则加载以延续会话
         self._load_context_from_disk()
+        
         # 触发器引用表（运行期使用，不参与持久化）
         self.triggers: Dict[str, Any] = {}
         
-        # 注入角色配置
+        # 注入角色配置（支持旧格式和新格式）
         if role_config:
             self._inject_role_config(role_config)
+        elif role_name:
+            self._load_role_config(role_name)
 
     def _default_context(self) -> Context:
         return {
@@ -43,12 +51,14 @@ class Session:
             "tool_policy": {"role": "system", "content": TOOL_POLICY},
             "available_tools": {"role": "system", "content": ""},
             "memory_context": {"role": "system", "content": ""},
+            "current_time": {"role": "system", "content": ""},
             "user_preferences": {"role": "system", "content": json.dumps({
                 "watchlist": [],
                 "analysis_style": "comprehensive",
                 "risk_tolerance": "moderate",
             })},
             "react_prompt": {"role": "system", "content": ""},
+            "active_sessions": {"role": "system", "content": "[可对话会话列表]\n无其他在线会话"},
             "qa_history": [],
         }
 
@@ -76,6 +86,10 @@ class Session:
                 new_ctx[k] = ctx[k]
         self._context = new_ctx
 
+    def _has_role_config(self) -> bool:
+        """检查是否有有效的角色配置"""
+        return hasattr(self, 'role_config') and self.role_config is not None
+
     def _inject_role_config(self, role_config: Dict[str, Any]):
         """注入角色配置到系统提示词"""
         try:
@@ -85,8 +99,30 @@ class Session:
                 # 将角色描述添加到系统提示词
                 persona_text = f"\n\n角色设定: {role_config['persona']}"
                 self._context["system_prompt"]["content"] += persona_text
+            # 保存角色配置供后续使用
+            self.role_config = role_config
         except Exception as e:
             logger.warning("注入角色配置失败 session_id=%s err=%r", self.session_id, e)
+    
+    def _load_role_config(self, role_name: str):
+        """从角色管理器加载角色配置"""
+        try:
+            from .role_manager import get_role_manager
+            role_manager = get_role_manager()
+            role_config = role_manager.get_role(role_name)
+            
+            if role_config:
+                # 注入系统提示词
+                self._context["system_prompt"]["content"] = role_config.system_prompt
+                # 保存角色配置
+                from .role_manager import get_role_manager
+                role_manager = get_role_manager()
+                self.role_config = role_manager.role_config_to_dict(role_config)
+                logger.info(f"成功加载角色配置: {role_name}")
+            else:
+                logger.warning(f"角色配置不存在: {role_name}")
+        except Exception as e:
+            logger.warning(f"加载角色配置失败 session_id={self.session_id} role={role_name} err={e}")
 
 
     def build_llm_messages(self, task: Task, scratchpad: list = None) -> List[Message]:
@@ -113,6 +149,10 @@ class Session:
         # 4. memory_context
         if ctx.get("memory_context"):
             messages.append(ctx["memory_context"])
+
+        # 4.1 current_time
+        if ctx.get("current_time"):
+            messages.append(ctx["current_time"])
  
         # 4.5 active_sessions（动态发现的在线会话列表，供模型感知通信对象）
         if ctx.get("active_sessions"):
@@ -187,6 +227,12 @@ class Session:
                 "session_id": self.session_id,
                 "context": self._context,
             }
+            # 保存角色配置信息
+            if self._has_role_config():
+                data["role_config"] = self.role_config
+            if hasattr(self, 'role_name') and self.role_name:
+                data["role_name"] = self.role_name
+                
             with open(self._session_file, "w", encoding="utf-8") as f:
                 f.write(json.dumps(data, ensure_ascii=False, indent=2))
         except Exception as e:
@@ -201,6 +247,18 @@ class Session:
                 if isinstance(loaded, dict) and "context" in loaded and isinstance(loaded["context"], dict):
                     # 做一次 set_context 规范化
                     self.set_context(loaded["context"])  # type: ignore[arg-type]
+                    
+                    # 加载保存的角色配置信息
+                    if "role_config" in loaded and isinstance(loaded["role_config"], dict):
+                        self.role_config = loaded["role_config"]
+                    if "role_name" in loaded and isinstance(loaded["role_name"], str):
+                        self.role_name = loaded["role_name"]
+                    
+                    # 如果会话有角色配置，重新注入角色配置
+                    if self._has_role_config():
+                        self._inject_role_config(self.role_config)
+                    elif hasattr(self, 'role_name') and self.role_name:
+                        self._load_role_config(self.role_name)
         except Exception as e:
             logger.warning("加载会话上下文失败 session_id=%s err=%r", self.session_id, e)
 
@@ -209,12 +267,15 @@ class SessionManager:
     def __init__(self):
         self._sessions: Dict[str, Session] = {}
 
-    def get_session(self, session_id: str, role_config: Optional[Dict[str, Any]] = None) -> Session:
+    def get_session(self, session_id: str, role_config: Optional[Dict[str, Any]] = None, role_name: Optional[str] = None) -> Session:
         if session_id not in self._sessions:
-            self._sessions[session_id] = Session(session_id, role_config)
-        elif role_config:
+            self._sessions[session_id] = Session(session_id, role_config, role_name)
+        elif role_config or role_name:
             # 如果会话已存在但有新的角色配置，重新注入
-            self._sessions[session_id]._inject_role_config(role_config)
+            if role_config:
+                self._sessions[session_id]._inject_role_config(role_config)
+            elif role_name:
+                self._sessions[session_id]._load_role_config(role_name)
         return self._sessions[session_id]
 
     def remove_session(self, session_id: str):

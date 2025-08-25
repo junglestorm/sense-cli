@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 
-from .commands import ask, chat, tools, version
+from .commands import ask, chat, tools, version, role
 from .core.interaction import _interactive
 
 app = typer.Typer(add_completion=False, help="Stock Agent CLI - AI驱动的股票分析工具")
@@ -14,8 +14,9 @@ app.command()(version)
 app.command()(ask)
 app.command()(chat)
 app.command()(tools)
+app.add_typer(role.app, name="role", help="角色管理命令")
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 
 @app.callback(invoke_without_command=True)
@@ -33,7 +34,7 @@ def main_callback(
     configure_logging(level=("DEBUG" if debug else "ERROR"), console=(debug or log_console))
 
     if version_flag:
-        version.version()
+        version()
         raise typer.Exit()
 
     from .utils.display import show_logo

@@ -37,7 +37,7 @@ def get_session_manager() -> SessionManager:
     return _session_manager
 
 
-async def ensure_kernel(session_id: str = "default", role_config: Optional[Dict[str, Any]] = None) -> AgentKernel:
+async def ensure_kernel(session_id: str = "default", role_config: Optional[Dict[str, Any]] = None, role_name: Optional[str] = None) -> AgentKernel:
     """确保获取AgentKernel实例（懒加载 + 单例），支持可选的角色配置注入"""
     global _kernel, _current_model
     if _kernel is not None:
@@ -87,11 +87,21 @@ async def ensure_kernel(session_id: str = "default", role_config: Optional[Dict[
         # 初始化核心组件
         # 创建SessionManager
         session_manager = get_session_manager()
-        session = session_manager.get_session(session_id, role_config)
+        session = session_manager.get_session(session_id, role_config, role_name)
+
+        # 根据角色配置调整默认参数
+        timeout = 300
+        max_iterations = 10
+        
+        if role_config and isinstance(role_config, dict):
+            permissions = role_config.get('permissions', {})
+            timeout = permissions.get('timeout', 300)
+            max_iterations = permissions.get('max_iterations', 10)
 
         # 创建Agent配置
         agent_config = AgentConfig(
-            timeout=300,
+            timeout=timeout,
+            max_iterations=max_iterations,
             llm_model=provider_config.get("model"),
             llm_temperature=0.1,
             llm_max_tokens=4096,

@@ -153,20 +153,16 @@ async def _interactive(
     role_config = None
     if role:
         try:
-            # 加载设置文件获取角色配置
-            settings_path = resolve_settings_path()
-            settings = load_settings(settings_path)
-            roles_config = settings.get("roles", {})
+            # 使用新的角色管理器加载角色配置
+            from .role_manager import get_role_manager
+            role_manager = get_role_manager()
+            role_config_obj = role_manager.get_role(role)
             
-            # 加载所有角色配置
-            _session_manager.load_role_configs(roles_config)
-            
-            # 获取指定角色配置
-            role_config = _session_manager.get_role_config(role)
-            if not role_config:
-                console.print(f"[yellow]警告: 未找到角色 '{role}' 的配置[/yellow]")
-            else:
+            if role_config_obj:
+                role_config = role_manager.role_config_to_dict(role_config_obj)
                 console.print(f"[green]已加载角色: {role}[/green]")
+            else:
+                console.print(f"[yellow]警告: 未找到角色 '{role}' 的配置[/yellow]")
                 
         except Exception as e:
             console.print(f"[yellow]警告: 加载角色配置失败: {e}[/yellow]")

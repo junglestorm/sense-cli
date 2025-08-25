@@ -1,113 +1,42 @@
-# Stock Agent 配置文件示例
+# Stock CLI 配置文件示例
 # 请复制此文件为 settings.yaml 并修改相应配置
-
-name:
-  # 角色设置
-  role: "***"
-  prompt: "***"
 
 # LLM 设置
 llm:
-  # DeepSeek 配置 (推荐，性价比高)
+  # 当前使用的提供商 (openai/deepseek/ollama)
+  provider: "openai"
+  
+  # OpenAI 配置
+  openai:
+    api_key: "your-openai-api-key"  # 请替换为您的API密钥
+    base_url: "https://api.openai.com/v1"
+    model: "gpt-4o-mini"
+    timeout: 120
+
+  # DeepSeek 配置
   deepseek:
     api_key: "your-deepseek-api-key"  # 请替换为您的API密钥
     base_url: "https://api.deepseek.com/v1"
     model: "deepseek-chat"
-    max_tokens: 2048
-    temperature: 0.1
-    timeout: 30
-    max_concurrent_requests: 5
+    timeout: 120
 
-  # OpenAI 配置
-  openai:
-    api_key: "your-openai-key"  # 请替换为您的API密钥
-    base_url: "https://api.openai.com/v1"
-    model: "gpt-4o-mini"
-    max_tokens: 1024
-    temperature: 0.1
-    timeout: 30
-
-  # Ollama 本地配置 (适合本地部署)
+  # Ollama 本地配置
   ollama:
     api_key: "ollama"  # 本地服务使用固定值
     base_url: "http://localhost:11434/v1"
     model: "llama3.1"
-    max_tokens: 2048
-    temperature: 0.1
-    timeout: 60
+    timeout: 120
 
-  # 当前使用的提供商 (deepseek/openai/ollama)
-  provider: "deepseek"
+# Redis 配置
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  db: 0
+  password: ""
+  prefix: "stock_cli"
 
-# 数据源配置
-data_sources:
-  # 股票数据配置
-  stock:
-    # 数据更新间隔 (秒)
-    update_interval: 300
-    # 最大缓存时间 (秒)
-    cache_ttl: 1800
-    
-  # 新闻数据配置
-  news:
-    # 新闻数据更新间隔 (秒)
-    update_interval: 600
-    # 最大缓存时间 (秒)
-    cache_ttl: 3600
-
-# 系统配置
-system:
-  # 日志级别 (DEBUG/INFO/WARNING/ERROR)
-  log_level: "INFO"
-  
-  # 最大任务并发数
-  max_concurrent_tasks: 3
-  
-  # 数据库配置
-  database:
-    # SQLite 数据库路径
-    path: "data/db/structured_memory.sqlite"
-    # 连接池大小
-    pool_size: 5
-    # 查询超时 (秒)
-    timeout: 30
-
-# ReAct Agent 配置
-agent:
-  # 最大迭代次数
-  max_iterations: 10
-  
-  # 总体超时时间 (秒)
-  total_timeout: 120
-  
-  # 流式输出
-  stream_output: true
-  
-  # 工具调用超时 (秒)
-  tool_timeout: 30
-
-# Human-in-the-Loop 配置
-human_loop:
-  # 是否启用
-  enabled: false
-  
-  # 审批类型 (all/final_answer/tools/none)
-  approval_type: "final_answer"
-  
-  # 超时时间 (秒)
-  timeout: 300
-
-
-# 角色配置
-roles:
-  # 角色配置文件目录
-  path: "prompts/"
-  
-  # 可用角色列表 (用于命令行选择)
-  available:
-    - name: "philosopher"
-      description: "哲学家 - 擅长深度思考和哲学探讨"
-      file: "philosopher.yaml"
-    - name: "storyteller" 
-      description: "故事讲述者 - 富有创造力和叙事能力"
-      file: "storyteller.yaml"
+# 会话配置
+session:
+  default_session: "default"
+  persist: true
+  max_history: 50

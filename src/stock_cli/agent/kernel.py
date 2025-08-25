@@ -51,6 +51,13 @@ class AgentKernel:
         """
         if record_user_question:
             try:
+                # 注入当前时间到 context
+                import datetime
+                now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.session.context["current_time"] = {
+                    "role": "system",
+                    "content": f"[当前时间] {now_str},对任何时间相关的问题,一律使用这个时间为准,此为当前task开始时间"
+                }
                 self.session.append_qa({"role": "user", "content": description})
             except Exception:
                 pass
@@ -73,7 +80,10 @@ class AgentKernel:
         try:
             try:
                 mgr = await MCPServerManager.get_instance()
-                tools_for_prompt = await mgr.list_tools()
+                all_tools = await mgr.list_tools()
+                
+                # 根据角色配置过滤可用工具
+                tools_for_prompt = self._filter_tools_by_role(all_tools)
             except Exception:
                 tools_for_prompt = []
 
@@ -161,7 +171,11 @@ class AgentKernel:
                 active_sessions = await RedisBus.list_active_sessions()
                 if isinstance(active_sessions, list):
                     bullet = "\n".join([f"- {sid}" for sid in active_sessions]) if active_sessions else "无其他在线会话"
-                    self.session.context["active_sessions"] = {"role": "system", "content": f"在线会话:\n{bullet}"}
+                    # 1. 作为独立 system message 注入
+                    self.session.context["active_sessions"] = {
+                        "role": "system",
+                        "content": "[可对话会话列表]\n" + bullet + "\n请优先参考本列表与其他会话通信。"
+                    }
             except Exception:
                 # 忽略注入失败，保证主流程
                 pass
@@ -422,8 +436,8 @@ class AgentKernel:
         except Exception as e:
             obs = f"ERROR: 规范化工具返回失败: {e!r}"
         obs = (obs or "").strip()
-        if len(obs) > 2000:
-            obs = obs[:2000]
+        if len(obs) > 16000:
+            obs = obs[:16000]
         return obs
 
     async def _reset_stream_markers(self):
@@ -476,3 +490,25 @@ class AgentKernel:
             except Exception:  # noqa: BLE001
                 pass
         return response.strip() or "任务完成"
+
+    def _filter_tools_by_role(self, all_tools: List[Any]) -> List[Any]:
+        """根据角色配置过滤可用工具"""
+        if not hasattr(self.session, 'role_config') or not self.session.role_config:
+            return all_tools
+        
+        role_config = self.session.role_config
+        allowed_servers = role_config.get('allowed_mcp_servers', [])
+        if not allowed_servers:
+            return all_tools
+        
+        # 过滤工具，只保留允许的MCP服务器中的工具
+        filtered_tools = []
+        for tool in all_tools:
+            # 从工具名称推断服务器名称（工具名称格式：server_name.tool_name）
+            tool_name = getattr(tool, 'name', '')
+            if '.' in tool_name:
+                server_name = tool_name.split('.')[0]
+                if server_name in allowed_servers:
+                    filtered_tools.append(tool)
+        
+        return filtered_tools

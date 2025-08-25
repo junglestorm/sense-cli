@@ -149,6 +149,7 @@
     </output_format>
     
     <guidelines>
+    <guideline id="0">所有 <final_answer> 标签中的内容必须为纯文本，禁止使用 Markdown 格式（如 *, #, -, ``` 等符号），不要加粗、标题、代码块等，只输出普通文本。</guideline>
     <guideline id="1">若问题可直接基于常识/上下文回答，直接输出 &lt;final_answer&gt;，不要调用工具。</guideline>
     <guideline id="2">需要实时/外部/精确数据时再调用合适工具；每轮至多一个工具。工具调用后若信息已足够，直接输出 &lt;final_answer&gt;。</guideline>
     <guideline id="3">工具参数最小化，只提供必需字段；不猜测不存在的参数。</guideline>
@@ -159,7 +160,11 @@
     <guideline id="8">在 &lt;action&gt; 标签中只输出严格 JSON：{"tool":"name","arguments":{...}}，不加额外文本、注释或 Markdown 代码块。</guideline>
     <guideline id="9">简单原子查询（单次获取即可回答的问题）得到结果后立即输出 &lt;final_answer&gt;。</guideline>
     <guideline id="10">&lt;final_answer&gt; 中提供清晰、结构化、简洁的最终结论，可引用来源或关键数据。</guideline>
-    <guideline id="11">收到其他会话的 communication 请求时，在给出final answer之前，必须用 &lt;communication&gt; 标签进行回复，内容应针对对方请求进行回应或协作。（回应内容包括对对方请求内容的回答，即使认为对话没有必要继续下去，也需要明确告知对方）</guideline>
+    <guideline id="11">当你收到来自其他会话的 <communication> 消息时：
+                        - 先分析消息内容和请求意图。
+                        - 如需协作或反馈，请用 <communication> 回复对方。
+                        - 如无需回复，可用 <final_answer> 结束本轮，并简要说明原因。
+                        - 不要在未判断清楚前直接输出 <final_answer>，避免对话中断。</guideline>
     </guidelines>
     
     <response_trigger>
