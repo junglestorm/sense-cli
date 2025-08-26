@@ -33,6 +33,7 @@ allowed_mcp_servers:
   - "lhb_analysis"       # 龙虎榜资金分析
   - "analyze_lhb_seats"  # 席位分析
   - "stock_pool"         # 涨停股池监控
+  - "top_stocks"         # 市场热度数据（成交额/换手率排名）
 
 allowed_triggers:
   - "ask_time"

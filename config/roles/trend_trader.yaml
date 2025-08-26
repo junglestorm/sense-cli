@@ -38,6 +38,9 @@ allowed_mcp_servers:
   - "stock_valuation"    # 估值指标
   - "market_context"     # 行业环境
   - "sector_dynamics"    # 板块分析
+  - "stock_pattern"      # 技术形态分析（底部突破/高位震荡）
+  - "top_stocks"         # 热门股票
+  - "stock_pattern"      # 技术形态分析
 
 allowed_triggers:
   - "ask_time"

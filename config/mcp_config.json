@@ -41,6 +41,20 @@
       "command": "python",
       "args": ["src/stock_cli/tools/mcp_server/stock_pool.py"],
       "env": {}
+    },
+    {
+      "name": "stock_pattern",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/stock_pattern.py"],
+      "env": {}
+    },
+    {
+      "name": "top_stocks",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/top_stocks.py"],
+      "env": {}
     }
   ]
 }

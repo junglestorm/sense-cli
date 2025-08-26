@@ -496,23 +496,7 @@ class AgentKernel:
         return response.strip() or "任务完成"
 
     def _filter_tools_by_role(self, all_tools: List[Any]) -> List[Any]:
-        """根据角色配置过滤可用工具"""
-        if not hasattr(self.session, 'role_config') or not self.session.role_config:
-            return all_tools
-        
-        role_config = self.session.role_config
-        allowed_servers = role_config.get('allowed_mcp_servers', [])
-        if not allowed_servers:
-            return all_tools
-        
-        # 过滤工具，只保留允许的MCP服务器中的工具
-        filtered_tools = []
-        for tool in all_tools:
-            # 从工具名称推断服务器名称（工具名称格式：server_name.tool_name）
-            tool_name = getattr(tool, 'name', '')
-            if '.' in tool_name:
-                server_name = tool_name.split('.')[0]
-                if server_name in allowed_servers:
-                    filtered_tools.append(tool)
-        
-        return filtered_tools
+        """根据角色配置过滤可用工具 - 现在通过提示词控制，不再硬编码过滤"""
+        # 不再进行硬编码过滤，全部工具都可用
+        # 工具使用权限通过角色提示词来控制
+        return all_tools

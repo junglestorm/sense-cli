@@ -88,24 +88,40 @@ def get_stock_valuation(symbol: str) -> Dict[str, Any]:
     import akshare as ak
     from datetime import datetime
     try:
-        # 获取A股实时行情数据，其中包含估值指标
-        df = ak.stock_zh_a_spot_em()
-        stock_info = df[df['代码'] == symbol]
-        if stock_info.empty:
-            return {"success": False, "message": "Stock not found"}
+        # 创建一个字典来存储最终的估值数据
+        valuation_data = {"symbol": symbol}
+        
+        # 定义要获取的指标列表
+        indicators = ["市盈率(TTM)", "市净率", "市销率(TTM)", "净资产收益率(ROE)"]
+        
+        for indicator in indicators:
+            # 使用百度股市通接口获取单个指标的数据
+            df = ak.stock_zh_valuation_baidu(symbol=symbol, indicator=indicator)
+            if not df.empty:
+                # 取最新的数据
+                latest_value = df['value'].iloc[-1]
+                # 将指标值存入字典，键名进行简化
+                if indicator == "市盈率(TTM)":
+                    valuation_data["pe_ttm"] = latest_value
+                elif indicator == "市净率":
+                    valuation_data["pb"] = latest_value
+                elif indicator == "市销率(TTM)":
+                    valuation_data["ps_ttm"] = latest_value
+                elif indicator == "净资产收益率(ROE)":
+                    valuation_data["roe"] = latest_value
+            else:
+                # 如果某个指标获取失败，设为None
+                key_mapping = {
+                    "市盈率(TTM)": "pe_ttm",
+                    "市净率": "pb", 
+                    "市销率(TTM)": "ps_ttm",
+                    "净资产收益率(ROE)": "roe"
+                }
+                valuation_data[key_mapping.get(indicator)] = None
 
-        info = stock_info.iloc[0]
         return {
             "success": True,
-            "data": {
-                "symbol": symbol,
-                "pe_ttm": info.get('市盈率-动态'),
-                "pb": info.get('市净率'),
-                # 市销率和ROE可能不在此表中，需从其他接口获取
-                "ps_ttm": None, # 需要其他接口
-                "dividend_yield": info.get('股息率-动态'),
-                "roe": None # 需要其他接口
-            },
+            "data": valuation_data,
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
