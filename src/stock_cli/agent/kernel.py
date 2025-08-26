@@ -36,6 +36,7 @@ class AgentKernel:
         self._last_final_answer: str = ""
         self._last_communication_payload: str = ""
         self.scratchpad: list = []
+        self._scratchpad_history: list = []  # 用于保留历史scratchpad内容
  
     # ---------------- 公共入口 ----------------
     async def run(
@@ -74,6 +75,16 @@ class AgentKernel:
         total_start = time.time()
         total_timeout = min(task.timeout or self.config.timeout, self.config.timeout)
         event_adapter = ProgressCallbackAdapter(progress_cb)
+        
+        # 保留最近3次的scratchpad历史
+        if len(self._scratchpad_history) > 3:
+            self._scratchpad_history.pop(0)
+        
+        # 将当前scratchpad内容保存到历史中（如果有内容）
+        if self.scratchpad:
+            self._scratchpad_history.append(self.scratchpad.copy())
+        
+        # 重置当前scratchpad，但保留历史供参考
         self.scratchpad: list = []  # 直接用 List[Message]
 
         # 在进入循环前构建 ReAct 提示词（包含 available_tools / scratchpad / qa_history）
@@ -105,9 +116,15 @@ class AgentKernel:
             except Exception:
                 active_sessions = []
 
+            # 合并scratchpad历史到当前scratchpad中
+            combined_scratchpad = []
+            for historical_scratchpad in self._scratchpad_history:
+                combined_scratchpad.extend(historical_scratchpad)
+            combined_scratchpad.extend(self.scratchpad)
+            
             react_prompt_text = self.prompt_builder.build_react_prompt(
                 current_task=task.description,
-                scratchpad=self.scratchpad,
+                scratchpad=combined_scratchpad,
                 available_tools=tools_for_prompt,
                 memory_context=memory_ctx_content,
                 conversation_history=qa_history,
