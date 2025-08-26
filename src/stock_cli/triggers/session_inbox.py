@@ -35,10 +35,13 @@ async def session_inbox_trigger(session_id: str, config: Dict[str, Any]):
     async def _handle_message(obj: Dict[str, Any]):
         from_sid = str(obj.get("from") or "")
         content = str(obj.get("message") or "")
-        if not content:
+        
+        # 修复：忽略来自自身会话的消息，避免自引用循环
+        if not content or from_sid == session_id:
             return
+            
         # 构造用户可见的注入消息，保持与 chat 输入一致的表现
-        incoming = f"[来自 {from_sid or 'unknown'}] {content}" if from_sid else content
+        incoming = f"[来自 {from_sid or 'unknown'}] {content}"
         session.append_qa({"role": "user", "content": incoming})
         console.print(f"\n[bold blue]stock-cli>[/bold blue] {incoming}")
         # 复用 chat 的执行入口，驱动 kernel 执行

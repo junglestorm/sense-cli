@@ -100,6 +100,8 @@ class AgentKernel:
             # 动态获取在线会话列表，注入到 ReAct 提示中供模型感知与选择
             try:
                 active_sessions = await RedisBus.list_active_sessions()
+                # 过滤掉当前会话自身，避免自引用
+                active_sessions = [sid for sid in active_sessions if sid != self.session.session_id]
             except Exception:
                 active_sessions = []
 
@@ -170,7 +172,9 @@ class AgentKernel:
             try:
                 active_sessions = await RedisBus.list_active_sessions()
                 if isinstance(active_sessions, list):
-                    bullet = "\n".join([f"- {sid}" for sid in active_sessions]) if active_sessions else "无其他在线会话"
+                    # 过滤掉当前会话自身，避免自引用
+                    other_sessions = [sid for sid in active_sessions if sid != self.session.session_id]
+                    bullet = "\n".join([f"- {sid}" for sid in other_sessions]) if other_sessions else "无其他在线会话"
                     # 1. 作为独立 system message 注入
                     self.session.context["active_sessions"] = {
                         "role": "system",
