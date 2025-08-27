@@ -37,6 +37,7 @@ class AgentKernel:
         self._last_communication_payload: str = ""
         self.scratchpad: list = []
         self._scratchpad_history: list = []  # 用于保留历史scratchpad内容
+        self._current_request_token_usage: dict = {}  # 当前请求的token使用量
  
     # ---------------- 公共入口 ----------------
     async def run(
@@ -204,14 +205,17 @@ class AgentKernel:
             # 单次模型调用
             
             # 由session负责构建LLM输入消息
-            messages = self.session.build_llm_messages(
+            messages, token_info = self.session.build_llm_messages(
                 task=task,
                 scratchpad=self.scratchpad,
             )
+            # 存储当前请求的token信息
+            self._current_request_token_usage = token_info
+            
             # 等待模型响应
             response_text = await self._stream_llm_call(
-                messages, 
-                self.config.llm_max_tokens, 
+                messages,
+                self.config.llm_max_tokens,
                 total_timeout - (time.time() - total_start), 
                 event_adapter
             )
@@ -317,6 +321,12 @@ class AgentKernel:
         communication_end_detected = False
         final_answer_end_detected = False
         chunks_after_end = 0
+        # 保留context tokens信息，只重置completion相关的token计数
+        if self._current_request_token_usage:
+            self._current_request_token_usage.update({
+                "completion_tokens": 0,
+                "total_tokens": self._current_request_token_usage.get("context_tokens", 0)
+            })
 
         try:
             async for chunk in self.llm_provider.generate_stream(

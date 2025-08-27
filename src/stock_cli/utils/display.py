@@ -37,8 +37,9 @@ def show_help():
 [yellow]特殊命令:[/yellow]
   /help, /h      - 显示此帮助信息
   /tools         - 列出可用工具
-  /status        - 显示系统状态  
+  /status        - 显示系统状态
   /clear         - 清屏
+  /reset         - 清空会话记忆
   /version       - 显示版本信息
   /quit, /exit   - 退出程序
 

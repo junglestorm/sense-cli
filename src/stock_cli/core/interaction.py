@@ -103,16 +103,10 @@ async def _run_agent_with_interrupt(
         answer = await _current_task
         latency = time.time() - start_t
 
-        # 获取token使用统计信息
+        # 获取当前请求的token使用量（使用tiktoken计算的上下文token）
         token_usage_info = {}
-        if hasattr(kernel, 'session') and hasattr(kernel.session, 'context'):
-            token_usage = kernel.session.context.get('token_usage')
-            if token_usage and 'content' in token_usage:
-                try:
-                    import json
-                    token_usage_info = json.loads(token_usage['content'])
-                except (json.JSONDecodeError, TypeError):
-                    token_usage_info = {}
+        if hasattr(kernel, '_current_request_token_usage'):
+            token_usage_info = kernel._current_request_token_usage
         
         result = {
             "answer": answer,
@@ -301,7 +295,7 @@ async def _interactive(
         # 但显示token使用统计信息
         if res and 'token_usage' in res and res['token_usage']:
             token_info = res['token_usage']
-            console.print(f"\n[dim]Token使用统计: total={token_info.get('total_tokens', 0)}, prompt={token_info.get('prompt_tokens', 0)}, completion={token_info.get('completion_tokens', 0)}[/dim]")
+            console.print(f"\n[dim]Token使用统计: context={token_info.get('context_tokens', 0)}, total={token_info.get('total_tokens', 0)}, prompt={token_info.get('prompt_tokens', 0)}, completion={token_info.get('completion_tokens', 0)}[/dim]")
   
         # 推理过程已经实时显示，不再重复显示
         return
@@ -368,6 +362,20 @@ async def _interactive(
         elif user_input == "/version":
             from ..cli import __version__
             console.print(f"Stock Agent CLI v{__version__}")
+            continue
+        elif user_input == "/reset":
+            # 清空会话记忆
+            try:
+                from ..agent.runtime import get_session_manager
+                session_manager = get_session_manager()
+                current_session = session_manager.get_session(session_id)
+                if current_session:
+                    current_session.clear_context()
+                    console.print("[green]✓ 会话记忆已清空[/green]")
+                else:
+                    console.print("[yellow]⚠ 当前会话不存在[/yellow]")
+            except Exception as e:
+                console.print(f"[red]✗ 清空记忆失败: {e}[/red]")
             continue
         elif user_input.startswith("/trigger"):
             await _handle_trigger_command(user_input, session_id)

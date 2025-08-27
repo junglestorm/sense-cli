@@ -115,6 +115,7 @@ class LLMProvider:
     def _update_token_usage(self, session, usage):
         """更新会话中的token使用统计"""
         try:
+            # 更新session.context中的token信息
             if hasattr(session, 'context') and 'token_usage' in session.context:
                 token_data = json.loads(session.context['token_usage']['content'])
                 token_data['total_tokens'] += getattr(usage, 'total_tokens', 0)
@@ -127,6 +128,23 @@ class LLMProvider:
                     "Updated token usage - total: %d, prompt: %d, completion: %d",
                     token_data['total_tokens'], token_data['prompt_tokens'], token_data['completion_tokens']
                 )
+            
+            # 同时更新kernel的_current_request_token_usage
+            try:
+                from ..agent.runtime import get_kernel
+                kernel = get_kernel()
+                if hasattr(kernel, '_current_request_token_usage'):
+                    # 保留context_tokens，更新其他token计数
+                    current_usage = kernel._current_request_token_usage
+                    current_usage.update({
+                        'total_tokens': current_usage.get('context_tokens', 0) + getattr(usage, 'completion_tokens', 0),
+                        'completion_tokens': getattr(usage, 'completion_tokens', 0),
+                        'prompt_tokens': current_usage.get('context_tokens', 0)
+                    })
+            except Exception:
+                # 忽略kernel更新失败，保证session更新正常进行
+                pass
+                
         except Exception as e:
             logger.warning("Failed to update token usage: %s", str(e))
 

@@ -131,11 +131,13 @@ class Session:
             logger.warning(f"加载角色配置失败 session_id={self.session_id} role={role_name} err={e}")
 
 
-    def build_llm_messages(self, task: Task, scratchpad: list = None) -> List[Message]:
+    def build_llm_messages(self, task: Task, scratchpad: list = None) -> tuple[List[Message], dict]:
         """
         组装 LLM 输入消息：context（全局）+ scratchpad（本 task）+ 当前任务描述。
         所有消息都符合OpenAI标准格式
         这个方法在task循环中构建，而非开始新task时构建
+        
+        返回: (消息列表, token统计信息)
         """
         messages: List[Message] = []
         ctx = self._context
@@ -181,7 +183,19 @@ class Session:
         if scratchpad:
             messages.extend(scratchpad)
 
-        return messages
+        # 计算上下文token数量
+        from ..utils.token_counter import token_counter
+        context_tokens = token_counter.count_messages_tokens(messages)
+        
+        token_info = {
+            "context_tokens": context_tokens,
+            "total_tokens": context_tokens,  # 初始只有上下文token
+            "prompt_tokens": context_tokens,
+            "completion_tokens": 0,  # 响应token将在响应后更新
+            "last_updated": ""
+        }
+
+        return messages, token_info
 
 
 
