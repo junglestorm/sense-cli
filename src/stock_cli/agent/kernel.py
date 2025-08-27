@@ -313,10 +313,14 @@ class AgentKernel:
         communication_buf: List[str] = []
         final_buf: List[str] = []
         thought_shown = action_shown = final_shown = False
+        action_end_detected = False
+        communication_end_detected = False
+        final_answer_end_detected = False
+        chunks_after_end = 0
 
         try:
             async for chunk in self.llm_provider.generate_stream(
-                messages, max_tokens=max_tokens, timeout=int(timeout)
+                messages, max_tokens=max_tokens, timeout=int(timeout), session=self.session
             ):
                 if not chunk:
                     continue
@@ -343,14 +347,16 @@ class AgentKernel:
                     final_buf.append(filtered)
                 elif section == "action_end":
                     self._last_action_payload = "".join(action_buf).strip()
-                    break  # 早停：去执行工具
+                    # 不立即break，等待可能的usage信息
+                    action_end_detected = True
                 elif section == "communication_end":
                     self._last_communication_payload = "".join(communication_buf).strip()
-                    break  # 早停：去执行通信
+                    # 不立即break，等待可能的usage信息
+                    communication_end_detected = True
                 elif section == "final_answer_end":
-                    # 捕获最终答案并提前结束流，避免继续等待无用 token 造成延迟
+                    # 捕获最终答案，但不立即break，等待可能的usage信息
                     self._last_final_answer = "".join(final_buf).strip()
-                    break
+                    final_answer_end_detected = True
 
                 if filtered and filtered.strip():
                     await event_adapter.emit(
@@ -359,6 +365,13 @@ class AgentKernel:
                             {"content": filtered, "type": section or "default"},
                         )
                     )
+                
+                # 检查是否需要break（在检测到结束标签后，再处理几个chunk以确保usage信息被处理）
+                if action_end_detected or communication_end_detected or final_answer_end_detected:
+                    chunks_after_end += 1
+                    # 在处理结束标签后，再处理3个chunk以确保usage信息被捕获
+                    if chunks_after_end >= 3:
+                        break
 
             # 收尾兜底（未遇到 *_end 标签）
             if action_buf and not self._last_action_payload:

@@ -60,6 +60,12 @@ class Session:
             "react_prompt": {"role": "system", "content": ""},
             "active_sessions": {"role": "system", "content": "[可对话会话列表]\n无其他在线会话"},
             "qa_history": [],
+            "token_usage": {"role": "system", "content": json.dumps({
+                "total_tokens": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "last_updated": ""
+            })},
         }
 
 

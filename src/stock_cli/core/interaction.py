@@ -103,11 +103,23 @@ async def _run_agent_with_interrupt(
         answer = await _current_task
         latency = time.time() - start_t
 
+        # 获取token使用统计信息
+        token_usage_info = {}
+        if hasattr(kernel, 'session') and hasattr(kernel.session, 'context'):
+            token_usage = kernel.session.context.get('token_usage')
+            if token_usage and 'content' in token_usage:
+                try:
+                    import json
+                    token_usage_info = json.loads(token_usage['content'])
+                except (json.JSONDecodeError, TypeError):
+                    token_usage_info = {}
+        
         result = {
             "answer": answer,
             "model": kernel.llm_provider.model if kernel.llm_provider else "unknown",
             "latency": latency,
             "reasoning": progress_lines if capture_steps else [],
+            "token_usage": token_usage_info,
         }
 
         return result
@@ -286,7 +298,11 @@ async def _interactive(
             except Exception:
                 pass
         # 最终答案已经通过XML状态机流式输出，无需额外处理
- 
+        # 但显示token使用统计信息
+        if res and 'token_usage' in res and res['token_usage']:
+            token_info = res['token_usage']
+            console.print(f"\n[dim]Token使用统计: total={token_info.get('total_tokens', 0)}, prompt={token_info.get('prompt_tokens', 0)}, completion={token_info.get('completion_tokens', 0)}[/dim]")
+  
         # 推理过程已经实时显示，不再重复显示
         return
 
@@ -372,6 +388,10 @@ async def _interactive(
             console.print(f"[red]Execution failed: {e}")
             continue
         # 最终答案已经通过XML状态机流式输出，无需额外处理
+        # 但显示token使用统计信息
+        if res and 'token_usage' in res and res['token_usage']:
+            token_info = res['token_usage']
+            console.print(f"[dim]Token使用统计: total={token_info.get('total_tokens', 0)}, prompt={token_info.get('prompt_tokens', 0)}, completion={token_info.get('completion_tokens', 0)}[/dim]")
 
         # 推理过程已经实时显示，不再重复显示
         # 退出聊天循环后，优雅关闭 MCP 资源，避免 anyio cancel scope 异常

@@ -7,8 +7,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import List, Literal, Union, AsyncGenerator, Dict, Any, Optional
+import json
 import logging
-
+from datetime import datetime
+from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletion
 
 @dataclass
 class ChatMessage:
@@ -23,8 +26,7 @@ class ChatMessage:
 # LLM Provider
 # ---------------------------------------------------------------------------
 
-from openai import AsyncOpenAI
-from openai.types.chat import ChatCompletion
+
 
 
 logger = logging.getLogger(__name__)
@@ -49,6 +51,7 @@ class LLMProvider:
         temperature: float = 0.1,
         timeout: int = 120,
         provider: str = "openai",
+        session: Optional[Any] = None,
     ) -> Union[str, AsyncGenerator[str, None]]:
         """统一的消息发送入口。
 
@@ -63,6 +66,7 @@ class LLMProvider:
                 temperature=temperature,
                 timeout=timeout,
                 provider=provider,
+                session=session,
             )
         else:
             return await self.generate(
@@ -71,6 +75,7 @@ class LLMProvider:
                 temperature=temperature,
                 timeout=timeout,
                 provider=provider,
+                session=session,
             )
 
     async def generate(
@@ -80,6 +85,7 @@ class LLMProvider:
         temperature: float = 0.1,
         timeout: int = 120,
         provider: str = "openai",
+        session: Optional[Any] = None,
     ) -> str:
         """生成文本回复"""
         try:
@@ -97,10 +103,32 @@ class LLMProvider:
 
             response: ChatCompletion = await self.client.chat.completions.create(**params)
 
+            # 更新token使用统计
+            if hasattr(response, 'usage') and response.usage and session:
+                self._update_token_usage(session, response.usage)
+
             return response.choices[0].message.content or ""
         except Exception as e:
             logger.error("Failed to generate response: %s", str(e))
             raise
+
+    def _update_token_usage(self, session, usage):
+        """更新会话中的token使用统计"""
+        try:
+            if hasattr(session, 'context') and 'token_usage' in session.context:
+                token_data = json.loads(session.context['token_usage']['content'])
+                token_data['total_tokens'] += getattr(usage, 'total_tokens', 0)
+                token_data['prompt_tokens'] += getattr(usage, 'prompt_tokens', 0)
+                token_data['completion_tokens'] += getattr(usage, 'completion_tokens', 0)
+                token_data['last_updated'] = datetime.now().isoformat()
+                
+                session.context['token_usage']['content'] = json.dumps(token_data)
+                logger.info(
+                    "Updated token usage - total: %d, prompt: %d, completion: %d",
+                    token_data['total_tokens'], token_data['prompt_tokens'], token_data['completion_tokens']
+                )
+        except Exception as e:
+            logger.warning("Failed to update token usage: %s", str(e))
 
     async def generate_stream(
         self,
@@ -109,6 +137,7 @@ class LLMProvider:
         temperature: float = 0.1,
         timeout: int = 120,
         provider: str = "openai",
+        session: Optional[Any] = None,
     ) -> AsyncGenerator[str, None]:
         """流式生成文本回复"""
         try:
@@ -125,10 +154,23 @@ class LLMProvider:
                 params["max_tokens"] = max_tokens or 1024
 
             stream = await self.client.chat.completions.create(**params)
-
+            
+            collected_content = []
+            
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+                    content = chunk.choices[0].delta.content
+                    collected_content.append(content)
+                    yield content
+                
+                # 检查chunk中是否有usage信息（DeepSeek等提供商在最后一个chunk中包含usage）
+                # 立即更新token统计，避免流式响应结束后usage信息不可用
+                if hasattr(chunk, 'usage') and chunk.usage and session:
+                    try:
+                        self._update_token_usage(session, chunk.usage)
+                    except Exception:
+                        # 忽略更新失败，保证主流程
+                        pass
 
         except Exception as e:
             # 明确区分超时异常
