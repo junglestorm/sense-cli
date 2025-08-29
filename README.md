@@ -1,6 +1,7 @@
-# Stock CLI - AI驱动的股票分析工具
 
-基于ReAct架构的智能股票分析平台，支持角色注入和MCP工具管理。
+# MCP 多智能体自动化平台
+
+本平台是一个支持自动化触发、多会话上下文、多智能体协作的命令行智能体系统。
 
 ## 🚀 快速开始
 
@@ -37,9 +38,6 @@ redis-server
 # 交互式聊天
 uv run stock-cli chat --session-id my_session
 
-# 使用技术分析师角色
-uv run stock-cli chat --session-id analysis --role technical_analyst
-
 # 查看可用工具
 uv run stock-cli tools
 
@@ -49,15 +47,14 @@ uv run stock-cli role list
 
 ## 📋 核心功能
 
-### 角色系统
-角色配置文件位于 `config/roles/`，支持自定义角色：
-```yaml
-name: technical_analyst
-description: 技术分析师
-system_prompt: 你是一名技术分析师，专注于股票技术指标分析...
-allowed_mcp_servers: [stock_insight, market_context]
-allowed_triggers: [ask_time]
-```
+### 自动化触发机制
+支持定时、事件、外部信号等多种自动触发方式，自动调度智能体执行任务，实现无人值守的智能自动化。
+
+### 对话与会话机制
+每个会话自动保存历史和上下文，支持多轮对话、上下文记忆、角色注入，适合复杂任务链路。
+
+### 多智能体协作
+通过触发机制+对话机制，平台可实现多Agent协作、自动任务分解与执行，适用于智能运维、知识管理、自动问答等场景。
 
 ### MCP工具
 - **stock_insight** - 股票技术指标和价格数据

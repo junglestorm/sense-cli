@@ -18,43 +18,34 @@ allowed_mcp_servers:
 allowed_triggers:
   - "trigger_type1"
   - "trigger_type2"
-permissions:
-  max_iterations: 10
-  timeout: 300
-  enable_communication: true
-```
 
-### 配置字段说明
+# 角色系统与多智能体协作机制
 
-- **name**: 角色名称（唯一标识）
-- **description**: 角色描述信息
-- **system_prompt**: 系统提示词，定义角色的行为和能力
-- **allowed_mcp_servers**: 允许使用的MCP服务器列表
-- **allowed_triggers**: 允许使用的触发器类型列表  
-- **permissions**: 权限配置
-  - max_iterations: 最大迭代次数
-  - timeout: 超时时间（秒）
-  - enable_communication: 是否启用会话通信
+本平台支持灵活的角色系统，每个角色可绑定不同的工具、上下文和触发策略，实现多智能体协作。
 
-## 可用命令
+## 角色配置
 
-### 查看所有角色
+角色配置文件位于 `config/roles/` 目录下，采用 YAML 格式。每个角色可指定工具、权限、触发策略等。
+
+## 角色管理命令
+
 ```bash
 python -m stock_cli role list
-```
-
-### 查看角色详情
-```bash
 python -m stock_cli role show <角色名称>
-```
-
-### 验证角色配置
-```bash
 python -m stock_cli role validate
 ```
 
-### 使用指定角色启动聊天
-```bash
+## 多智能体协作
+
+支持多角色协作、自动任务分配、上下文共享。
+
+## 触发机制与自动化
+
+角色可绑定触发器，实现定时、事件等自动化任务。
+
+## 进阶用法
+
+...existing code...
 python -m stock_cli chat --role technical_analyst
 python -m stock_cli chat --role fundamental_analyst
 ```

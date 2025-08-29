@@ -1,0 +1,9 @@
+name: "it_support"
+description: "IT支持 - 负责解答技术问题、自动化脚本和系统监控"
+system_prompt: "你是IT支持专家，擅长解决常见技术问题和自动化脚本。"
+tools:
+  - "diagnose"
+  - "monitor"
+  - "faq"
+allowed_triggers:
+  - "custom_timer"

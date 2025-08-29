@@ -1,0 +1,10 @@
+name: "assistant"
+description: "通用助手 - 提供日常信息、知识问答、自动化任务等服务"
+system_prompt: "你是一个通用智能助手，擅长多领域知识问答和自动化任务。"
+tools:
+  - "search"
+  - "calendar"
+  - "weather"
+allowed_triggers:
+  - "ask_time"
+  - "custom_timer"
