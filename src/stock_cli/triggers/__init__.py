@@ -14,7 +14,7 @@ TRIGGER_REGISTRY: Dict[str, Callable] = {}
 
 
 def register(trigger_type: str):
-    """注册触发器函数"""
+    """装饰器，用来注册触发器函数"""
     def decorator(func):
         TRIGGER_REGISTRY[trigger_type] = func
         logger.debug(f"触发器已注册: {trigger_type}")
