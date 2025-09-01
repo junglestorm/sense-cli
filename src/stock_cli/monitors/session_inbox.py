@@ -34,16 +34,29 @@ async def session_inbox_monitor(arguments: Dict[str, Any]):
     session = SessionManager().get_session(session_id)
     logger.info("获取会话实例成功: %s", session_id)
 
+    # 保持监控器运行状态的主循环
     async def _handle_message(obj: Dict[str, Any]):
+        # 提取消息字段并进行基本验证
         from_sid = str(obj.get("from") or "")
         to_sid = str(obj.get("to") or "")
-        content = str(obj.get("message") or "")
+        
+        # 确保消息内容存在且为字符串类型
+        if "message" not in obj:
+            logger.info("忽略缺少消息体的消息")
+            return
+            
+        content = str(obj["message"])
+        
+        # 进一步验证消息内容是否为空
+        if not content.strip():
+            logger.info("忽略空白消息内容")
+            return
         
         logger.info("收到消息: from=%s, to=%s, content=%s, obj=%s", from_sid, to_sid, content, obj)
         
-        # 确保消息是发送给当前会话的
-        if not content:
-            logger.info("忽略空消息")
+        # 保持与会话ID的验证逻辑
+        if to_sid and to_sid != session_id:
+            logger.info("忽略非本会话消息: to_sid=%s, session_id=%s", to_sid, session_id)
             return
             
         # 确保消息是发送给当前会话的
@@ -75,6 +88,7 @@ async def session_inbox_monitor(arguments: Dict[str, Any]):
 
     try:
         logger.info("开始订阅Redis消息: session_id=%s", session_id)
+        # 保持循环以维持监控器活跃状态
         async for msg in RedisBus.subscribe_messages(session_id):
             logger.info("收到Redis消息: %s", msg)
             try:

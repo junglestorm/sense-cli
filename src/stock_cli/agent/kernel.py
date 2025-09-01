@@ -569,7 +569,7 @@ class AgentKernel:
         try:
             obj = json.loads(cleaned)
             if isinstance(obj, dict):
-                # 支持多种操作类型：start, stop, list, info
+                # 支持多种操作类型：start, stop, list, list_active, info
                 operation = obj.get("operation", "start")  # 默认为start
                 monitor_name = obj.get("monitor", "")
                 arguments = obj.get("arguments", {})
@@ -581,6 +581,8 @@ class AgentKernel:
                     return "stop", {"monitor_id": monitor_id}
                 elif operation == "list":
                     return "list", {}
+                elif operation == "list_active":
+                    return "list_active", {}
                 elif operation == "info":
                     monitor_id = obj.get("monitor_id", "")
                     return "info", {"monitor_id": monitor_id}
@@ -619,9 +621,14 @@ class AgentKernel:
                 # 列出监控器
                 monitors = manager.list_monitors()
                 if monitors:
-                    observation = "可用监控器:\n" + "\n".join([
-                        f"- {mon['name']}: {mon['description']}" for mon in monitors
-                    ])
+                    monitor_lines = []
+                    for mon in monitors:
+                        monitor_lines.append(f"- {mon['name']}: {mon['description']}")
+                        # 显示参数信息
+                        if mon.get('parameters'):
+                            for param_name, param_desc in mon['parameters'].items():
+                                monitor_lines.append(f"  * {param_name}: {param_desc}")
+                    observation = "可用监控器:\n" + "\n".join(monitor_lines)
                 else:
                     observation = "当前没有可用的监控器"
 
