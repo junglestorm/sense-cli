@@ -1,4 +1,3 @@
-
 # MCP 多智能体自动化平台
 
 本平台是一个支持自动化触发、多会话上下文、多智能体协作的命令行智能体系统。
@@ -38,6 +37,9 @@ redis-server
 # 交互式聊天
 uv run stock-cli chat --session-id my_session
 
+# 使用特定角色进行交互式聊天
+uv run stock-cli chat --session-id my_session --role assistant
+
 # 查看可用工具
 uv run stock-cli tools
 
@@ -48,22 +50,31 @@ uv run stock-cli role list
 ## 📋 核心功能
 
 ### 角色系统
-角色配置文件位于 `config/roles/`，支持自定义角色：
+角色是平台的核心概念，支持配置不同的系统提示词和可用工具集。角色配置文件位于 `config/roles/` 目录：
+
 ```yaml
 name: technical_analyst
 description: 技术分析师
-system_prompt: 你是一名技术分析师，专注于股票技术指标分析...
-allowed_mcp_servers: [stock_insight, market_context]
+system_prompt: 你是一名技术分析师，专注于数据分析和技术指标解读...
+allowed_mcp_servers: [data_insight, context_retriever]
 ```
 
-### MCP工具
-- **stock_insight** - 股票技术指标和价格数据
-- **market_context** - 市场整体情况和行业动态
-- **fundamental_data** - 财务报表和基本面指标
-- **sector_dynamics** - 行业板块表现分析
+启动角色只需指定角色名称：
+```bash
+uv run stock-cli chat --role technical_analyst
+```
 
-### 会话管理
-支持多会话并行，会话历史自动持久化。
+
+### 监控器系统与多智能体交互
+
+平台内置监控器系统，实现自动化任务与多智能体协作：
+
+- 支持循环定时、定点定时、会话消息监听等多种监控器
+- 所有监控器均可动态启动/停止，异步执行
+- 基于 Redis 消息总线，支持跨会话、跨角色通信
+- 多角色可通过消息互发、协作，构建复杂自动化流程
+
+监控器和多智能体机制让平台具备高度自动化和分布式智能体协作能力。
 
 ## 🔧 配置文件
 
