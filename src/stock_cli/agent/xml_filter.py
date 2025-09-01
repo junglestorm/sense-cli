@@ -15,6 +15,7 @@ class FilterState(Enum):
     IN_ACTION = "in_action"  # 在<action>标签内
     IN_COMMUNICATION = "in_communication"  # 在<communication>标签内
     IN_FINAL = "in_final"  # 在<final_answer>标签内
+    IN_MONITOR = "in_monitor"  # 在<monitor>标签内
     SKIP_TAG = "skip_tag"  # 跳过标签本身
 
 
@@ -71,6 +72,9 @@ class XMLStreamFilter:
                         elif tag_name == "final_answer":
                             self.state = FilterState.IN_FINAL
                             section_type = "final_answer"
+                        elif tag_name == "monitor":
+                            self.state = FilterState.IN_MONITOR
+                            section_type = "monitor"
                     elif self._is_closing_tag(self.current_tag):
                         # 结束标签
                         if (
@@ -82,7 +86,7 @@ class XMLStreamFilter:
                             and self.state == FilterState.IN_COMMUNICATION
                             or tag_name == "final_answer"
                             and self.state == FilterState.IN_FINAL
-                        ):
+                        ) or tag_name == "monitor" and self.state == FilterState.IN_MONITOR:
                             # 结束信号：用于通知上层该段落已闭合
                             if tag_name == "final_answer":
                                 section_type = "final_answer_end"
@@ -92,6 +96,8 @@ class XMLStreamFilter:
                                 section_type = "communication_end"
                             elif tag_name == "thinking":
                                 section_type = "thinking_end"
+                            elif tag_name == "monitor":
+                                section_type = "monitor_end"
 
                             self.state = FilterState.OUTSIDE
 
@@ -104,6 +110,7 @@ class XMLStreamFilter:
                 FilterState.IN_ACTION,
                 FilterState.IN_COMMUNICATION,
                 FilterState.IN_FINAL,
+                FilterState.IN_MONITOR,
             ]:
                 result += char
                 if not section_type:
@@ -115,6 +122,8 @@ class XMLStreamFilter:
                         section_type = "communication"
                     elif self.state == FilterState.IN_FINAL:
                         section_type = "final_answer"
+                    elif self.state == FilterState.IN_MONITOR:
+                        section_type = "monitor"
 
         return result, section_type
 
@@ -143,4 +152,6 @@ class XMLStreamFilter:
             return "communication"
         elif self.state == FilterState.IN_FINAL:
             return "final_answer"
+        elif self.state == FilterState.IN_MONITOR:
+            return "monitor"
         return None

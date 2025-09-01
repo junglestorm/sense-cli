@@ -35,9 +35,11 @@ class AgentKernel:
         self._last_action_payload: str = ""
         self._last_final_answer: str = ""
         self._last_communication_payload: str = ""
+        self._last_monitor_payload: str = ""
         self.scratchpad: list = []
         self._scratchpad_history: list = []  # 用于保留历史scratchpad内容
         self._current_request_token_usage: dict = {}  # 当前请求的token使用量
+        self._active_monitors: Dict[str, asyncio.Task] = {}  # 活跃的监控器任务
  
     # ---------------- 公共入口 ----------------
     async def run(
@@ -235,11 +237,13 @@ class AgentKernel:
         """case风格处理 final_answer、action、fallback 三种情况"""
         action_name, action_args = self._parse_action_json(self._last_action_payload)
         comm_target, comm_message = self._parse_communication_json(self._last_communication_payload)
+        monitor_name, monitor_args = self._parse_monitor_json(self._last_monitor_payload)
         cases = {
             "final_answer": bool(self._last_final_answer),
             "action": bool(action_name and self._last_action_payload),
             "communication": bool(comm_target and self._last_communication_payload),
-            "fallback": not self._last_final_answer and not action_name and not comm_target,
+            "monitor": bool(monitor_name and self._last_monitor_payload),
+            "fallback": not self._last_final_answer and not action_name and not comm_target and not monitor_name,
         }
         # case: final_answer
         if cases["final_answer"]:
@@ -285,6 +289,11 @@ class AgentKernel:
             )
             return None  # 继续下一轮
 
+        # case: monitor
+        if cases["monitor"]:
+            await self._handle_monitor_operation(monitor_name, monitor_args, event_adapter, self._last_monitor_payload)
+            return None  # 继续下一轮
+
         # case: fallback
         if cases["fallback"]:
             fallback_raw = self._extract_fallback_final(response_text)
@@ -292,7 +301,7 @@ class AgentKernel:
             self.scratchpad.append({
                 "role": "user",
                 "content": (
-                    "上一次输出未提供 <action>、<communication> 或 <final_answer>。请严格按照系统提示中的XML输出格式，仅输出 <thinking> + (<action> / <communication> 或 <final_answer>)，不要输出其它说明文字。"
+                    "上一次输出未提供 <action>、<communication>、<monitor> 或 <final_answer>。请严格按照系统提示中的XML输出格式，仅输出 <thinking> + (<action> / <communication> / <monitor> 或 <final_answer>)，不要输出其它说明文字。"
                 )
             })
             return None
@@ -316,10 +325,12 @@ class AgentKernel:
         action_buf: List[str] = []
         communication_buf: List[str] = []
         final_buf: List[str] = []
-        thought_shown = action_shown = final_shown = False
+        monitor_buf: List[str] = []
+        thought_shown = action_shown = final_shown = monitor_shown = False
         action_end_detected = False
         communication_end_detected = False
         final_answer_end_detected = False
+        monitor_end_detected = False
         chunks_after_end = 0
         # 保留context tokens信息，只重置completion相关的token计数
         if self._current_request_token_usage:
@@ -347,6 +358,9 @@ class AgentKernel:
                 elif section == "final_answer" and not final_shown:
                     await event_adapter.emit(ReActEvent(ReActEventType.FINAL_ANSWER, {"content": ""}))
                     final_shown = True
+                elif section == "monitor" and not monitor_shown:
+                    await event_adapter.emit(ReActEvent(ReActEventType.MONITOR_HEADER, {}))
+                    monitor_shown = True
 
                 # buffer collect
                 if section == "action" and filtered:
@@ -355,6 +369,8 @@ class AgentKernel:
                     communication_buf.append(filtered)
                 elif section == "final_answer" and filtered:
                     final_buf.append(filtered)
+                elif section == "monitor" and filtered:
+                    monitor_buf.append(filtered)
                 elif section == "action_end":
                     self._last_action_payload = "".join(action_buf).strip()
                     # 不立即break，等待可能的usage信息
@@ -367,6 +383,10 @@ class AgentKernel:
                     # 捕获最终答案，但不立即break，等待可能的usage信息
                     self._last_final_answer = "".join(final_buf).strip()
                     final_answer_end_detected = True
+                elif section == "monitor_end":
+                    self._last_monitor_payload = "".join(monitor_buf).strip()
+                    # 不立即break，等待可能的usage信息
+                    monitor_end_detected = True
 
                 if filtered and filtered.strip():
                     await event_adapter.emit(
@@ -377,7 +397,7 @@ class AgentKernel:
                     )
                 
                 # 检查是否需要break（在检测到结束标签后，再处理几个chunk以确保usage信息被处理）
-                if action_end_detected or communication_end_detected or final_answer_end_detected:
+                if action_end_detected or communication_end_detected or final_answer_end_detected or monitor_end_detected:
                     chunks_after_end += 1
                     # 在处理结束标签后，再处理3个chunk以确保usage信息被捕获
                     if chunks_after_end >= 3:
@@ -390,6 +410,8 @@ class AgentKernel:
                 self._last_communication_payload = "".join(communication_buf).strip()
             if final_buf and not self._last_final_answer:
                 self._last_final_answer = "".join(final_buf).strip()
+            if monitor_buf and not self._last_monitor_payload:
+                self._last_monitor_payload = "".join(monitor_buf).strip()
             return "".join(collected)
         except Exception as e:  # noqa: BLE001
             logger.warning("流式处理异常: %s", e)
@@ -488,6 +510,7 @@ class AgentKernel:
         self._last_action_payload = ""
         self._last_communication_payload = ""
         self._last_final_answer = ""
+        self._last_monitor_payload = ""
 
     def _parse_action_json(self, raw: str) -> Tuple[str, Dict[str, Any]]:
         if not raw:
@@ -534,6 +557,129 @@ class AgentKernel:
             except Exception:  # noqa: BLE001
                 pass
         return response.strip() or "任务完成"
+
+    def _parse_monitor_json(self, raw: str) -> Tuple[str, Dict[str, Any]]:
+        """解析monitor JSON，支持多种操作类型"""
+        if not raw:
+            return "", {}
+        cleaned = raw.strip()
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        try:
+            obj = json.loads(cleaned)
+            if isinstance(obj, dict):
+                # 支持多种操作类型：start, stop, list, info
+                operation = obj.get("operation", "start")  # 默认为start
+                monitor_name = obj.get("monitor", "")
+                arguments = obj.get("arguments", {})
+                
+                if operation == "start" and monitor_name:
+                    return f"start_{monitor_name}", arguments
+                elif operation == "stop":
+                    monitor_id = obj.get("monitor_id", "")
+                    return "stop", {"monitor_id": monitor_id}
+                elif operation == "list":
+                    return "list", {}
+                elif operation == "info":
+                    monitor_id = obj.get("monitor_id", "")
+                    return "info", {"monitor_id": monitor_id}
+                    
+        except Exception:
+            return "", {}
+        return "", {}
+
+    async def _handle_monitor_operation(
+        self,
+        operation: str,
+        arguments: Dict[str, Any],
+        event_adapter: ProgressCallbackAdapter,
+        original_json: str
+    ) -> str:
+        """处理监控器操作"""
+        from ..core.monitor_manager import get_monitor_manager
+        manager = await get_monitor_manager()
+        
+        try:
+            if operation.startswith("start_"):
+                # 启动监控器
+                monitor_name = operation.replace("start_", "")
+                # 添加当前会话ID到参数中，让监控器知道消息应该发送到哪个会话
+                arguments_with_session = arguments.copy()
+                arguments_with_session["target_session"] = self.session.session_id
+                monitor_id = await manager.start_monitor(monitor_name, arguments_with_session)
+                observation = f"监控器 '{monitor_name}' 已启动 (ID: {monitor_id})"
+                
+            elif operation == "stop":
+                # 停止监控器
+                monitor_id = arguments.get("monitor_id")
+                await manager.stop_monitor(monitor_id)
+                observation = f"监控器已停止 (ID: {monitor_id})"
+                
+            elif operation == "list":
+                # 列出监控器
+                active_monitors = manager.list_active_monitors()
+                if active_monitors:
+                    observation = "活跃监控器:\n" + "\n".join([
+                        f"- {monitor['id']} ({monitor['name']}) - {'运行中' if monitor['running'] else '已停止'}"
+                        for monitor in active_monitors
+                    ])
+                else:
+                    observation = "当前没有活跃的监控器"
+                    
+            elif operation == "info":
+                # 获取监控器信息
+                monitor_id = arguments.get("monitor_id")
+                info = manager.get_monitor_info(monitor_id)
+                if info:
+                    observation = f"监控器信息: {info}"
+                else:
+                    observation = f"未找到监控器: {monitor_id}"
+                    
+            else:
+                observation = f"未知的监控器操作: {operation}"
+            
+            # 记录到对话历史
+            self.session.append_qa({"role": "assistant", "content": original_json})
+            
+            # 更新scratchpad
+            self.scratchpad.append({
+                "role": "assistant",
+                "content": f"Monitor: {original_json}"
+            })
+            self.scratchpad.append({
+                "role": "user",
+                "content": f"Observation: {observation}"
+            })
+
+            # 输出到终端
+            await event_adapter.emit(
+                ReActEvent(ReActEventType.STREAM_CHUNK, {"content": observation, "type": "observation"})
+            )
+            return observation
+            
+        except Exception as e:  # noqa: BLE001
+            err = f"ERROR: {e}"
+            
+            # 记录错误
+            self.scratchpad.append({
+                "role": "assistant",
+                "content": f"Monitor: {original_json}"
+            })
+            self.scratchpad.append({
+                "role": "user",
+                "content": f"Observation: {err}"
+            })
+
+            await event_adapter.emit(
+                ReActEvent(ReActEventType.STREAM_CHUNK, {"content": err, "type": "observation"})
+            )
+            
+            logger.warning("监控器操作失败 operation=%s args=%s err=%r", operation, arguments, e)
+            self.session.append_qa({
+                "role": "assistant",
+                "content": "监控器操作失败。请检查操作和参数是否正确。",
+            })
+            return err
 
     def _filter_tools_by_role(self, all_tools: List[Any]) -> List[Any]:
         """根据角色配置过滤可用工具 - 现在通过提示词控制，不再硬编码过滤"""

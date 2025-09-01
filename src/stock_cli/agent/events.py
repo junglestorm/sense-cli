@@ -22,6 +22,7 @@ class ReActEventType(Enum):
     STREAM_CHUNK = "stream_chunk"
     THOUGHT_HEADER = "thinking_header"
     ACTION_HEADER = "action_header"
+    MONITOR_HEADER = "monitor_header"
 
 
 @dataclass
@@ -72,6 +73,7 @@ class ProgressCallbackAdapter:
         # 注册事件适配器
         self.emitter.on(ReActEventType.THOUGHT_HEADER, self._adapt_thought_header)
         self.emitter.on(ReActEventType.ACTION_HEADER, self._adapt_action_header)
+        self.emitter.on(ReActEventType.MONITOR_HEADER, self._adapt_monitor_header)
         self.emitter.on(ReActEventType.FINAL_ANSWER, self._adapt_final_answer)
         self.emitter.on(ReActEventType.STREAM_CHUNK, self._adapt_stream_chunk)
 
@@ -82,6 +84,10 @@ class ProgressCallbackAdapter:
     async def _adapt_action_header(self, event: ReActEvent):
         """适配动作头部事件"""
         await self.progress_cb("[ActionHeader]")
+
+    async def _adapt_monitor_header(self, event: ReActEvent):
+        """适配监控器头部事件"""
+        await self.progress_cb("[MonitorHeader]")
 
     async def _adapt_final_answer(self, event: ReActEvent):
         """适配最终答案事件"""
@@ -103,6 +109,8 @@ class ProgressCallbackAdapter:
             await self.progress_cb(f"[StreamFinalAnswer]{content}")
         elif chunk_type == "final_answer_end":
             await self.progress_cb("[FinalAnswerEnd]")
+        elif chunk_type == "monitor":
+            await self.progress_cb(f"[StreamMonitor]{content}")
         else:
             await self.progress_cb(content)
 

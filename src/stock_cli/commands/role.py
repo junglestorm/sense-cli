@@ -46,18 +46,15 @@ def list():
     table.add_column("会话ID", style="cyan")
     table.add_column("角色名称", style="green")
     table.add_column("MCP工具", style="blue")
-    table.add_column("触发器", style="yellow")
     
     for session_info in active_sessions_with_roles:
         role_config = session_info['role_config']
         if role_config and isinstance(role_config, dict):
             mcp_tools = ", ".join(role_config.get('allowed_mcp_servers', []))
-            triggers = ", ".join(role_config.get('allowed_triggers', []))
             table.add_row(
                 session_info['session_id'],
                 session_info['role_name'],
                 mcp_tools,
-                triggers
             )
         else:
             table.add_row(
@@ -94,8 +91,6 @@ def show(session_id: str):
         if 'allowed_mcp_servers' in role_config:
             console.print(f"[bold cyan]MCP工具:[/bold cyan] {', '.join(role_config['allowed_mcp_servers'])}")
         
-        if 'allowed_triggers' in role_config:
-            console.print(f"[bold cyan]触发器:[/bold cyan] {', '.join(role_config['allowed_triggers'])}")
         
         if 'permissions' in role_config:
             console.print(f"[bold cyan]权限:[/bold cyan] {role_config['permissions']}")

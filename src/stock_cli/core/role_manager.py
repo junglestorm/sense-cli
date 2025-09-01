@@ -18,7 +18,6 @@ class RoleConfig:
     description: str
     system_prompt: str
     allowed_mcp_servers: List[str]
-    allowed_triggers: List[str]
     permissions: Dict[str, Any]
 
 class RoleManager:
@@ -57,22 +56,18 @@ class RoleManager:
         """加载单个角色配置文件"""
         with open(file_path, 'r', encoding='utf-8') as f:
             config_data = yaml.safe_load(f)
-        
         if not config_data:
             return None
-        
         # 验证必需字段
-        required_fields = ['name', 'system_prompt', 'allowed_mcp_servers', 'allowed_triggers']
+        required_fields = ['name', 'system_prompt', 'allowed_mcp_servers']
         for field in required_fields:
             if field not in config_data:
                 raise ValueError(f"角色配置文件缺少必需字段: {field}")
-        
         return RoleConfig(
             name=config_data['name'],
             description=config_data.get('description', ''),
             system_prompt=config_data['system_prompt'],
             allowed_mcp_servers=config_data['allowed_mcp_servers'],
-            allowed_triggers=config_data['allowed_triggers'],
             permissions=config_data.get('permissions', {})
         )
     
@@ -86,7 +81,6 @@ class RoleManager:
             "name": role_config.name,
             "system_prompt": role_config.system_prompt,
             "allowed_mcp_servers": role_config.allowed_mcp_servers,
-            "allowed_triggers": role_config.allowed_triggers,
             "permissions": role_config.permissions
         }
     
@@ -95,21 +89,13 @@ class RoleManager:
         return list(self._roles.keys())
     
     def validate_role_config(self, role_config: RoleConfig, 
-                           available_mcp_servers: List[str],
-                           available_triggers: List[str]) -> List[str]:
+                           available_mcp_servers: List[str]) -> List[str]:
         """验证角色配置的有效性"""
         errors = []
-        
         # 验证MCP服务器
         for server in role_config.allowed_mcp_servers:
             if server not in available_mcp_servers:
                 errors.append(f"MCP服务器 '{server}' 不存在")
-        
-        # 验证触发器
-        for trigger in role_config.allowed_triggers:
-            if trigger not in available_triggers:
-                errors.append(f"触发器 '{trigger}' 未注册")
-        
         return errors
 
 # 全局角色管理器实例
