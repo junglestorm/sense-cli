@@ -51,7 +51,9 @@ class RedisBus:
             settings_path = resolve_settings_path()
             settings = load_settings(settings_path) or {}
             redis_cfg = settings.get("redis", {}) or {}
-        except Exception:
+            logger.info("加载Redis配置: %s", redis_cfg)
+        except Exception as e:
+            logger.warning("加载Redis配置失败，使用默认配置: %s", e)
             redis_cfg = {}
 
         host = redis_cfg.get("host", "127.0.0.1")
@@ -59,22 +61,27 @@ class RedisBus:
         db = int(redis_cfg.get("db", 0))
         password = redis_cfg.get("password") or None
         prefix = str(redis_cfg.get("prefix", "stock_cli"))
-        return {
+        config = {
             "host": host,
             "port": port,
             "db": db,
             "password": password,
             "prefix": prefix,
         }
+        logger.info("Redis配置: %s", config)
+        return config
 
     @classmethod
     async def _ensure_client(cls) -> Redis:
         """懒加载单例 Redis 客户端。"""
         if cls._client is not None:
+            logger.debug("使用已存在的Redis客户端")
             return cls._client
         async with cls._lock:
             if cls._client is not None:
+                logger.debug("使用已存在的Redis客户端(双重检查)")
                 return cls._client
+            logger.info("初始化Redis客户端")
             cfg = await cls._load_settings()
             cls._prefix = cfg["prefix"]
             cls._client = Redis(
@@ -145,23 +152,67 @@ class RedisBus:
 
         返回：发布的订阅者数量（<=0 表示可能无人订阅）
         """
-        client = await cls._ensure_client()
-        payload = {
-            "from": from_session,
-            "to": target_session,
-            "message": message,
-            "ts": int(time.time()),
-        }
-        if isinstance(extra, dict):
-            payload.update(extra)
-        channel = cls._channel_for_session(target_session)
+        logger.info("准备发布消息: from=%s, target=%s, message=%s", from_session, target_session, message)
         try:
-            subs = await client.publish(channel, json.dumps(payload, ensure_ascii=False))
-            logger.info("RedisBus 发送通信: %s -> %s, subs=%s", from_session, target_session, subs)
-            return int(subs or 0)
+            client = await cls._ensure_client()
+            payload = {
+                "from": from_session,
+                "to": target_session,
+                "message": message,
+                "ts": int(time.time()),
+            }
+            if isinstance(extra, dict):
+                payload.update(extra)
+            channel = cls._channel_for_session(target_session)
+            logger.info("发布消息到频道: %s, payload=%s", channel, payload)
+            try:
+                subs = await client.publish(channel, json.dumps(payload, ensure_ascii=False))
+                logger.info("RedisBus 发送通信: %s -> %s, subs=%s", from_session, target_session, subs)
+                
+                # 检查订阅者数量
+                try:
+                    numsub = await client.pubsub_numsub(channel)
+                    logger.info("发布后频道订阅者数量: %s -> %s", channel, dict(numsub))
+                except Exception as e:
+                    logger.warning("检查发布后订阅者数量失败: %s", e)
+                    
+                return int(subs or 0)
+            except Exception as e:
+                logger.error("RedisBus 发布消息失败 channel=%s err=%r", channel, e)
+                raise
         except Exception as e:
-            logger.error("RedisBus 发布消息失败 channel=%s err=%r", channel, e)
-            raise
+            # 如果连接失败，重新初始化客户端
+            logger.warning("RedisBus 连接失败，尝试重新初始化: %s", e)
+            async with cls._lock:
+                if cls._client is not None:
+                    try:
+                        await cls._client.close()
+                    except Exception:
+                        pass
+                    cls._client = None
+            # 重新尝试连接
+            client = await cls._ensure_client()
+            payload = {
+                "from": from_session,
+                "to": target_session,
+                "message": message,
+                "ts": int(time.time()),
+            }
+            if isinstance(extra, dict):
+                payload.update(extra)
+            channel = cls._channel_for_session(target_session)
+            logger.info("重新连接后发布消息到频道: %s, payload=%s", channel, payload)
+            subs = await client.publish(channel, json.dumps(payload, ensure_ascii=False))
+            logger.info("RedisBus 重新连接后发送通信: %s -> %s, subs=%s", from_session, target_session, subs)
+            
+            # 检查订阅者数量
+            try:
+                numsub = await client.pubsub_numsub(channel)
+                logger.info("重新连接后发布消息，频道订阅者数量: %s -> %s", channel, dict(numsub))
+            except Exception as e:
+                logger.warning("检查重新连接后订阅者数量失败: %s", e)
+                
+            return int(subs or 0)
 
     @classmethod
     async def subscribe_messages(cls, session_id: str) -> AsyncIterator[Dict[str, Any]]:
@@ -172,11 +223,22 @@ class RedisBus:
             async for msg in RedisBus.subscribe_messages(session_id):
                 ...
         """
+        logger.info("开始订阅消息: session_id=%s", session_id)
         client = await cls._ensure_client()
         channel = cls._channel_for_session(session_id)
+        logger.info("准备订阅频道: %s", channel)
         pubsub: PubSub = client.pubsub()
         await pubsub.subscribe(channel)
         logger.info("RedisBus 订阅会话频道: %s", channel)
+        
+        # 检查订阅状态
+        try:
+            channels = await client.pubsub_channels()
+            logger.info("当前所有订阅频道: %s", channels)
+            numsub = await client.pubsub_numsub(channel)
+            logger.info("频道订阅者数量: %s -> %s", channel, dict(numsub))
+        except Exception as e:
+            logger.warning("检查订阅状态失败: %s", e)
 
         try:
             while True:
@@ -191,23 +253,27 @@ class RedisBus:
                     if isinstance(data, str):
                         try:
                             obj = json.loads(data)
-                        except Exception:
+                        except Exception as e:
+                            logger.warning("RedisBus 解析消息失败: %s, data=%s", e, data)
                             obj = {"raw": data}
                     else:
                         obj = {"raw": data}
+                    logger.info("RedisBus 收到消息: channel=%s, obj=%s", channel, obj)
                     yield obj
                 except asyncio.CancelledError:
+                    logger.info("RedisBus 订阅被取消: %s", channel)
                     raise
                 except Exception as ie:
                     logger.warning("RedisBus 订阅循环异常: %r", ie)
+                    logger.exception("RedisBus 订阅循环详细异常:")
                     await asyncio.sleep(0.5)
         finally:
             try:
                 await pubsub.unsubscribe(channel)
                 await pubsub.close()
                 logger.info("RedisBus 取消订阅频道: %s", channel)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("RedisBus 取消订阅失败: %s", e)
 
     # ---------- 清理 ----------
 

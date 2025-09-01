@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import logging
 import time
 import traceback
 from typing import Optional, List, Callable, Awaitable, Dict, Any
@@ -20,6 +21,7 @@ from ..utils.display import show_help, show_status, print_banner
 from ..utils.redis_bus import RedisBus
 from ..core.config_resolver import resolve_triggers_path, load_triggers_config, resolve_settings_path, load_settings
 
+logger = logging.getLogger(__name__)
 console = Console()
 
 # 全局SessionManager实例
@@ -27,9 +29,6 @@ _session_manager = SessionManager()
 _current_task: Optional[asyncio.Task] = None
 _interrupt_requested = False
 
-# 触发器任务管理器
-_active_trigger_tasks: Dict[str, asyncio.Task] = {}
-_trigger_configs: Dict[str, Dict[str, Any]] = {}
 
 
 async def _run_agent_with_interrupt(
@@ -72,6 +71,8 @@ async def _run_agent_with_interrupt(
             console.print("\n[dim]💭 thinking: [/dim]", end="")
         elif not minimal and chunk.startswith("[ActionHeader]"):
             console.print("\n[dim]⚡ action: [/dim]", end="")
+        elif not minimal and chunk.startswith("[MonitorHeader]"):
+            console.print("\n[dim]🔍 monitor: [/dim]", end="")
         elif not minimal and chunk.startswith("[FinalAnswerHeader]"):
             # 显示最终答案标题和上方横线
             title = "✅ 最终答案"
@@ -82,6 +83,9 @@ async def _run_agent_with_interrupt(
             text = chunk.replace("[StreamFinalAnswer]", "")
             # 最终答案使用正常颜色显示，不用dim
             print(text, end="", flush=True)
+        elif not minimal and chunk.startswith("[StreamMonitor]"):
+            text = chunk.replace("[StreamMonitor]", "")
+            console.print(f"[dim]{text}[/dim]", end="")
         elif not minimal and chunk.startswith("[FinalAnswerEnd]"):
             # 最终答案结束，显示下方横线
             console.print(f"\n{'─' * 50}")
@@ -155,23 +159,9 @@ async def _interactive(
     role: Optional[str] = None,
 ):
     """交互式 CLI 主循环"""
-    # 加载角色配置
+    
+    # 初始化role_config为None
     role_config = None
-    if role:
-        try:
-            # 使用新的角色管理器加载角色配置
-            from .role_manager import get_role_manager
-            role_manager = get_role_manager()
-            role_config_obj = role_manager.get_role(role)
-            
-            if role_config_obj:
-                role_config = role_manager.role_config_to_dict(role_config_obj)
-                console.print(f"[green]已加载角色: {role}[/green]")
-            else:
-                console.print(f"[yellow]警告: 未找到角色 '{role}' 的配置[/yellow]")
-                
-        except Exception as e:
-            console.print(f"[yellow]警告: 加载角色配置失败: {e}[/yellow]")
 
     # 确保 Agent kernel 可用
     try:
@@ -204,17 +194,14 @@ async def _interactive(
                     await inbox_task
                 except Exception:
                     pass
-            # 停止额外触发器
+            # 停止其他触发器任务
             if other_trigger_tasks:
                 for t in other_trigger_tasks:
                     try:
                         t.cancel()
+                        await t  # 等待任务清理完成
                     except Exception:
                         pass
-                try:
-                    await asyncio.gather(*other_trigger_tasks, return_exceptions=True)
-                except Exception:
-                    pass
         finally:
             try:
                 await RedisBus.unregister_session(session_id)
@@ -231,34 +218,28 @@ async def _interactive(
     except Exception:
         pass
 
-    # 启动会话收件箱触发器（后台任务），仅当触发器已注册时
+    # 初始化并启动监控器系统
     try:
-        from ..triggers import auto_discover, get as get_trigger
-        auto_discover()
-        inbox = get_trigger("session_inbox")
-        if inbox:
-            inbox_task = asyncio.create_task(inbox(session_id, {}))
-            # 将自动启动的session_inbox也添加到全局管理器中
-            _active_trigger_tasks["session_inbox"] = inbox_task
-            _trigger_configs["session_inbox"] = {"session_id": session_id, "type": "session_inbox"}
-    except Exception:
-        # 忽略触发器启动失败，保持chat主流程
-        pass
+        from ..core.monitor_manager import get_monitor_manager
+        from ..monitors import register_all_monitors
+        
+        # 注册所有监控器
+        await register_all_monitors()
+        logger.info("监控器系统初始化完成")
+        
+        # 获取监控器管理器实例
+        manager = await get_monitor_manager()
+        
+        # 启动会话收件箱监控器
+        await manager.start_monitor("session_inbox", {"session_id": session_id})
+        logger.info("会话收件箱监控器已启动")
+        
+    except ImportError as e:
+        logger.error("监控器模块导入失败: %s", str(e))
+    except Exception as e:
+        logger.warning("监控器系统初始化失败: %s", e)
+        logger.exception("详细错误信息:")
 
-    # 若传入 --trigger 参数，则启动指定的触发器类型
-    if triggers:
-        try:
-            from ..triggers import get as get_trigger
-            for trigger_type in triggers:
-                trigger_func = get_trigger(trigger_type)
-                if trigger_func:
-                    # 启动触发器，使用默认参数
-                    other_trigger_tasks.append(asyncio.create_task(trigger_func(session_id, {})))
-                    console.print(f"[green]已启动触发器: {trigger_type}[/green]")
-                else:
-                    console.print(f"[yellow]警告: 未找到触发器类型 '{trigger_type}'[/yellow]")
-        except Exception as e:
-            console.print(f"[yellow]启动触发器失败: {e}[/yellow]")
 
     active_model = current_model() or "unknown"
     if once:
@@ -377,9 +358,6 @@ async def _interactive(
             except Exception as e:
                 console.print(f"[red]✗ 清空记忆失败: {e}[/red]")
             continue
-        elif user_input.startswith("/trigger"):
-            await _handle_trigger_command(user_input, session_id)
-            continue
 
         try:
             res = await _run_agent_with_interrupt(
@@ -409,150 +387,6 @@ async def _interactive(
             pass
 
 
-async def _handle_trigger_command(command: str, session_id: str = "default") -> None:
-    """处理 /trigger 命令"""
-    from rich.table import Table
-    
-    parts = command.split()
-    if len(parts) < 2:
-        console.print("[yellow]用法: /trigger [start|stop|list|status] [trigger_name]")
-        console.print("[yellow]示例:")
-        console.print("[yellow]  /trigger list - 列出所有可用触发器")
-        console.print("[yellow]  /trigger start timer_5min - 启动定时器触发器")
-        console.print("[yellow]  /trigger stop timer_5min - 停止定时器触发器")
-        console.print("[yellow]  /trigger status - 显示触发器状态")
-        return
-    
-    action = parts[1].lower()
-    
-    if action == "list":
-        # 列出所有可用触发器
-        from ..triggers import discover_triggers
-        triggers = discover_triggers()
-        
-        table = Table(title="可用触发器")
-        table.add_column("名称", style="cyan")
-        table.add_column("类型", style="green")
-        table.add_column("描述", style="white")
-        
-        for trigger_name, trigger_cls in triggers.items():
-            table.add_row(trigger_name, trigger_cls.__name__, getattr(trigger_cls, "__doc__", "无描述") or "无描述")
-        
-        console.print(table)
-        
-    elif action == "start":
-        if len(parts) < 3:
-            console.print("[red]错误: 需要指定触发器名称")
-            return
-        
-        trigger_name = parts[2]
-        await _start_trigger(trigger_name, session_id)
-        
-    elif action == "stop":
-        if len(parts) < 3:
-            console.print("[red]错误: 需要指定触发器名称")
-            return
-        
-        trigger_name = parts[2]
-        await _stop_trigger(trigger_name)
-        
-    elif action == "status":
-        await _show_trigger_status()
-        
-    else:
-        console.print(f"[red]错误: 未知操作 '{action}'")
 
 
-async def _start_trigger(trigger_name: str, session_id: str = "default") -> None:
-    """启动指定触发器"""
-    from ..triggers import discover_triggers
-    
-    triggers = discover_triggers()
-    if trigger_name not in triggers:
-        console.print(f"[red]错误: 找不到触发器 '{trigger_name}'")
-        return
-    
-    # 检查是否已经启动
-    if trigger_name in _active_trigger_tasks:
-        console.print(f"[yellow]警告: 触发器 '{trigger_name}' 已经在运行")
-        return
-    
-    # 使用默认配置而不是配置文件
-    trigger_config = {"session_id": session_id}
-    
-    trigger_func = triggers[trigger_name]
-    try:
-        # 对于函数类型的触发器，直接调用
-        if callable(trigger_func):
-            task = asyncio.create_task(trigger_func(session_id=session_id, config=trigger_config))
-            _active_trigger_tasks[trigger_name] = task
-            _trigger_configs[trigger_name] = trigger_config
-            console.print(f"[green]已启动触发器: {trigger_name}")
-        else:
-            console.print(f"[red]错误: 触发器 '{trigger_name}' 不是可调用函数")
-    except Exception as e:
-        console.print(f"[red]启动触发器失败: {e}")
-
-
-async def _stop_trigger(trigger_name: str) -> None:
-    """停止指定触发器"""
-    if trigger_name not in _active_trigger_tasks:
-        console.print(f"[yellow]警告: 触发器 '{trigger_name}' 未在运行")
-        return
-    
-    task = _active_trigger_tasks[trigger_name]
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-    except Exception as e:
-        console.print(f"[yellow]停止触发器时出现异常: {e}")
-    
-    del _active_trigger_tasks[trigger_name]
-    if trigger_name in _trigger_configs:
-        del _trigger_configs[trigger_name]
-    
-    console.print(f"[green]已停止触发器: {trigger_name}")
-
-
-async def _show_trigger_status() -> None:
-    """显示触发器状态"""
-    from rich.table import Table
-    
-    table = Table(title="触发器状态")
-    table.add_column("名称", style="cyan")
-    table.add_column("状态", style="green")
-    table.add_column("类型", style="yellow")
-    
-    # 显示正在运行的触发器
-    for trigger_name in _active_trigger_tasks:
-        config = _trigger_configs.get(trigger_name, {})
-        trigger_type = config.get("type", "unknown")
-        table.add_row(trigger_name, "运行中", trigger_type)
-    
-    # 显示所有可用的触发器类型
-    from ..triggers import auto_discover, discover_triggers
-    auto_discover()  # 确保所有触发器都已注册
-    available_triggers = discover_triggers()
-    for trigger_name in available_triggers:
-        if trigger_name not in _active_trigger_tasks:
-            table.add_row(trigger_name, "已停止", "触发器")
-    
-    console.print(table)
-
-
-async def _cleanup_all_triggers() -> None:
-    """清理所有触发器任务"""
-    for trigger_name, task in list(_active_trigger_tasks.items()):
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            pass
-        del _active_trigger_tasks[trigger_name]
-    
-    _trigger_configs.clear()
 

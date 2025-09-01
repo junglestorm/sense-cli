@@ -119,6 +119,15 @@ async def ensure_kernel(session_id: str = "default", role_config: Optional[Dict[
         )
 
         logger.info("AgentKernel 初始化成功，使用模型: %s", _current_model)
+        
+        # 自动注册监控器
+        try:
+            from ..monitors import register_all_monitors
+            await register_all_monitors()
+            logger.info("监控器注册完成")
+        except Exception as e:
+            logger.warning("监控器注册失败: %s", e)
+        
         return _kernel
     except Exception as e:
         logger.error("AgentKernel 初始化失败: %s", e)
