@@ -6,55 +6,6 @@
       "command": "python",
       "args": ["src/stock_cli/tools/mcp_server/time_server.py"],
       "env": {}
-    },
-    {
-      "name": "fundamental_data",
-      "type": "stdio",
-      "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/fundamental_data.py"],
-      "env": {}
-    },
-    {
-      "name": "market_context",
-      "type": "stdio",
-      "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/market_context.py"],
-      "env": {}
-    },
-    {
-      "name": "sector_dynamics",
-      "type": "stdio",
-      "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/sector_dynamics.py"],
-      "env": {}
-    },
-    {
-      "name": "stock_insight",
-      "type": "stdio",
-      "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/stock_insight.py"],
-      "env": {}
-    },
-    {
-      "name": "stock_pool",
-      "type": "stdio",
-      "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/stock_pool.py"],
-      "env": {}
-    },
-    {
-      "name": "stock_pattern",
-      "type": "stdio",
-      "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/stock_pattern.py"],
-      "env": {}
-    },
-    {
-      "name": "top_stocks",
-      "type": "stdio",
-      "command": "python",
-      "args": ["src/stock_cli/tools/mcp_server/top_stocks.py"],
-      "env": {}
     }
   ]
 }
