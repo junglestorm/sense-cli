@@ -73,7 +73,7 @@ data/db/vector_store/
 # 日志文件 (运行时生成)
 data/logs/*.log
 logs/*.log
-
+dump.rdb
 # 用户历史记录 (个人数据)
 data/history.txt
 
