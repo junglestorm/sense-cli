@@ -105,7 +105,7 @@ async def register_session_inbox_monitor():
     
     session_inbox_monitor_def = Monitor(
         name="session_inbox",
-        description="会话收件箱监控器，监听当前会话的消息通道并被动触发模型响应",
+        description="会话收件箱监控器。",
         parameters={
             "session_id": "会话ID"
         },

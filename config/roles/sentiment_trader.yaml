@@ -35,9 +35,6 @@ allowed_mcp_servers:
   - "stock_pool"         # 涨停股池监控
   - "top_stocks"         # 市场热度数据（成交额/换手率排名）
 
-allowed_triggers:
-  - "ask_time"
-  - "session_inbox"
 
 permissions:
   max_iterations: 5

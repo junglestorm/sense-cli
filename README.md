@@ -56,7 +56,6 @@ name: technical_analyst
 description: 技术分析师
 system_prompt: 你是一名技术分析师，专注于股票技术指标分析...
 allowed_mcp_servers: [stock_insight, market_context]
-allowed_triggers: [ask_time]
 ```
 
 ### MCP工具

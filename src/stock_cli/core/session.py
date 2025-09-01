@@ -36,8 +36,7 @@ class Session:
         # 若存在历史上下文文件，则加载以延续会话
         self._load_context_from_disk()
         
-        # 触发器引用表（运行期使用，不参与持久化）
-        self.triggers: Dict[str, Any] = {}
+    # ...existing code...
         
         # 注入角色配置（支持旧格式和新格式）
         if role_config:

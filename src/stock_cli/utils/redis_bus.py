@@ -113,7 +113,7 @@ class RedisBus:
     @classmethod
     async def register_session(cls, session_id: str) -> None:
         """
-        将 session_id 加入在线集合。建议在 chat/trigger 启动时调用。
+    将 session_id 加入在线集合。建议在 chat/monitor 启动时调用。
         """
         client = await cls._ensure_client()
         await client.sadd(cls._key_sessions(), session_id)
@@ -123,7 +123,7 @@ class RedisBus:
     @classmethod
     async def unregister_session(cls, session_id: str) -> None:
         """
-        将 session_id 从在线集合移除。建议在 chat/trigger 退出时调用。
+    将 session_id 从在线集合移除。建议在 chat/monitor 退出时调用。
         """
         try:
             client = await cls._ensure_client()

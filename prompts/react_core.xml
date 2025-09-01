@@ -250,7 +250,4 @@
         <guideline id="m9">定时问题应该清晰、具体，能够引导模型进行完整的思考和分析</guideline>
     </monitor_guidelines>
     
-    <response_trigger>
-        现在开始：请使用XML格式回应。先输出 &lt;thinking&gt; 标签内容。若无需工具即可回答请直接给出 &lt;final_answer&gt;；需要实时数据时用 &lt;action&gt; 标签调用工具；需要后台监控时用 &lt;monitor&gt; 标签启动监控器。
-    </response_trigger>
 </prompt>

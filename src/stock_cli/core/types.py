@@ -159,16 +159,3 @@ class AgentConfig(BaseModel):
     tool_timeout: int = 30
     max_tool_retries: int = 3
 
-
-class TriggerEvent(BaseModel):
-    """触发事件"""
-
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str
-    type: str  # "time" or "event"
-    condition: Dict[str, Any]
-    task_template: str
-    priority: TaskPriority = TaskPriority.NORMAL
-    enabled: bool = True
-    created_at: datetime = Field(default_factory=datetime.now)
-    last_triggered: Optional[datetime] = None

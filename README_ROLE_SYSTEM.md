@@ -2,7 +2,6 @@
 
 ## 概述
 
-基于YAML配置文件的角色管理系统，实现了role、session、trigger和MCP工具四者的完全解耦。
 
 ## 角色配置文件格式
 
@@ -15,9 +14,6 @@ system_prompt: |
 allowed_mcp_servers:
   - "server_name1"
   - "server_name2"
-allowed_triggers:
-  - "trigger_type1"
-  - "trigger_type2"
 permissions:
   max_iterations: 10
   timeout: 300
@@ -30,7 +26,6 @@ permissions:
 - **description**: 角色描述信息
 - **system_prompt**: 系统提示词，定义角色的行为和能力
 - **allowed_mcp_servers**: 允许使用的MCP服务器列表
-- **allowed_triggers**: 允许使用的触发器类型列表  
 - **permissions**: 权限配置
   - max_iterations: 最大迭代次数
   - timeout: 超时时间（秒）
@@ -75,7 +70,6 @@ python -m stock_cli chat --role fundamental_analyst
 
 系统会自动验证：
 1. MCP服务器名称是否在 `config/mcp_config.json` 中存在
-2. 触发器类型是否已注册
 3. 配置文件格式是否正确
 
 ## 扩展自定义角色
@@ -93,9 +87,7 @@ allowed_mcp_servers:
   - "stock_insight"
   - "market_context" 
   - "sector_dynamics"
-allowed_triggers:
   - "ask_time"
-  - "session_inbox"
 permissions:
   max_iterations: 15
   timeout: 600
@@ -115,7 +107,6 @@ python -m stock_cli chat --role quant_analyst
 
 1. **完全解耦**: 角色配置与核心代码分离
 2. **动态加载**: 无需重启即可加载新角色
-3. **权限控制**: 精确控制每个角色的工具和触发器访问权限
 4. **易于扩展**: 通过配置文件即可添加新角色
 5. **验证机制**: 自动验证配置的有效性
 
@@ -125,15 +116,12 @@ python -m stock_cli chat --role quant_analyst
 
 1. **角色未找到**: 检查配置文件是否在 `config/roles/` 目录
 2. **MCP服务器不存在**: 检查 `config/mcp_config.json` 中的服务器名称
-3. **触发器未注册**: 确保触发器已在代码中正确注册
 
 ### 调试命令
 ```bash
 # 查看所有可用MCP服务器
 python -c "from src.stock_cli.tools.mcp_server_manager import MCPServerManager; import asyncio; mgr = MCPServerManager(); mgr._load_config(); print([s.name for s in mgr.servers_config])"
 
-# 查看所有已注册触发器
-python -c "from src.stock_cli.triggers import discover_triggers; print(list(discover_triggers().keys()))"
 ```
 
 ## 最佳实践

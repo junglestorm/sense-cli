@@ -70,7 +70,6 @@ class PromptLoader:
                             text_parts.append(f"{child_text}")
                         elif child.tag in ["requirement", "guideline", "note"]:
                             text_parts.append(f"- {child_text}")
-                        elif child.tag == "response_trigger":
                             text_parts.append(f"\n{child_text}")
                         else:
                             text_parts.append(child_text)

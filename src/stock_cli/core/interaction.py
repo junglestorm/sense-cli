@@ -19,7 +19,7 @@ from ..agent.runtime import ensure_kernel, get_kernel, current_model
 from ..core.session_manager import SessionManager
 from ..utils.display import show_help, show_status, print_banner
 from ..utils.redis_bus import RedisBus
-from ..core.config_resolver import resolve_triggers_path, load_triggers_config, resolve_settings_path, load_settings
+from ..core.config_resolver import resolve_settings_path, load_settings
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -155,7 +155,7 @@ async def _interactive(
     output_format: str = "text",
     timeout: int = 30,
     session_id: str = "default",
-    triggers: Optional[List[str]] = None,
+    # ...existing code...
     role: Optional[str] = None,
 ):
     """交互式 CLI 主循环"""
@@ -181,22 +181,22 @@ async def _interactive(
             pass
         raise typer.Exit(1)
 
-    # 注册在线会话并启动“会话收件箱”触发器（被动监听通信）
-    inbox_task: Optional[asyncio.Task] = None
-    other_trigger_tasks: List[asyncio.Task] = []
+    # 注册在线会话并启动“会话收件箱”监控器（被动监听通信）
+    inbox_monitor_task: Optional[asyncio.Task] = None
+    other_monitor_tasks: List[asyncio.Task] = []
 
     async def _shutdown_inbox_and_unregister():
-        nonlocal inbox_task, other_trigger_tasks
+        nonlocal inbox_monitor_task, other_monitor_tasks
         try:
-            if inbox_task:
-                inbox_task.cancel()
+            if inbox_monitor_task:
+                inbox_monitor_task.cancel()
                 try:
-                    await inbox_task
+                    await inbox_monitor_task
                 except Exception:
                     pass
-            # 停止其他触发器任务
-            if other_trigger_tasks:
-                for t in other_trigger_tasks:
+            # 停止其他监控器任务
+            if other_monitor_tasks:
+                for t in other_monitor_tasks:
                     try:
                         t.cancel()
                         await t  # 等待任务清理完成
@@ -298,7 +298,7 @@ async def _interactive(
                 pass
             try:
                 await _shutdown_inbox_and_unregister()
-                await _cleanup_all_triggers()
+                # ...existing code...
             except Exception:
                 pass
             break
@@ -310,7 +310,7 @@ async def _interactive(
                 pass
             try:
                 await _shutdown_inbox_and_unregister()
-                await _cleanup_all_triggers()
+                # ...existing code...
             except Exception:
                 pass
             break
@@ -327,7 +327,6 @@ async def _interactive(
                 pass
             try:
                 await _shutdown_inbox_and_unregister()
-                await _cleanup_all_triggers()
             except Exception:
                 pass
             break

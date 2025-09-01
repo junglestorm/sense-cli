@@ -42,9 +42,6 @@ allowed_mcp_servers:
   - "top_stocks"         # 热门股票
   - "stock_pattern"      # 技术形态分析
 
-allowed_triggers:
-  - "ask_time"
-  - "session_inbox"
 
 permissions:
   max_iterations: 6
