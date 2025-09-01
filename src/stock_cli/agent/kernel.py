@@ -10,6 +10,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from ..core.session import Session
 from ..core.llm_provider import LLMProvider
+from ..core.monitor_manager import get_monitor_manager
 from ..core.prompt_loader import PromptBuilder
 from ..core.types import AgentConfig, Task, TaskStatus,Context,Scratchpad
 from ..tools.mcp_server_manager import MCPServerManager
@@ -596,7 +597,6 @@ class AgentKernel:
         original_json: str
     ) -> str:
         """处理监控器操作"""
-        from ..core.monitor_manager import get_monitor_manager
         manager = await get_monitor_manager()
         
         try:
@@ -614,8 +614,18 @@ class AgentKernel:
                 monitor_id = arguments.get("monitor_id")
                 await manager.stop_monitor(monitor_id)
                 observation = f"监控器已停止 (ID: {monitor_id})"
-                
+            
             elif operation == "list":
+                # 列出监控器
+                monitors = manager.list_monitors()
+                if monitors:
+                    observation = "可用监控器:\n" + "\n".join([
+                        f"- {mon['name']}: {mon['description']}" for mon in monitors
+                    ])
+                else:
+                    observation = "当前没有可用的监控器"
+
+            elif operation == "list_active":
                 # 列出监控器
                 active_monitors = manager.list_active_monitors()
                 if active_monitors:

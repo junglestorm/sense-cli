@@ -111,9 +111,14 @@
 {"operation":"stop","monitor_id":"监控器ID"}
 </monitor>
 
-或者列出监控器：
+或者列出所有可用监控器：
 <monitor>
 {"operation":"list"}
+</monitor>
+
+或者列出所有活跃监控器：
+<monitor>
+{"operation":"list_active"}
 </monitor>
 
 或者获取监控器信息：
@@ -203,11 +208,22 @@
             <example type="monitor_list">
 <![CDATA[
 <thinking>
-用户想查看当前运行的监控器，我需要列出所有活跃的监控器。
+用户想查看所有可用的监控器，我需要列出所有可用监控器。
 </thinking>
 
 <monitor>
 {"operation":"list"}
+</monitor>
+]]>
+            </example>
+            <example type="monitor_list_active">
+<![CDATA[
+<thinking>
+用户想查看当前正在运行（活跃）的监控器，我需要列出所有活跃监控器。
+</thinking>
+
+<monitor>
+{"operation":"list_active"}
 </monitor>
 ]]>
             </example>
@@ -248,6 +264,7 @@
         <guideline id="m7">例如：用户说"每隔15秒提醒我"，你应该生成"这是一个定时提醒：请提供相关信息"</guideline>
         <guideline id="m8">如果用户要求特定内容（如艺术家名字），生成"这是一个定时提醒：请推荐一位艺术家并简要介绍"</guideline>
         <guideline id="m9">定时问题应该清晰、具体，能够引导模型进行完整的思考和分析</guideline>
+        <guideline id="m10">提示词中任何对具体monitor的使用仅为展示作用，不代表实际monitor的存在，在使用monitor之前务必先列出所有可用的monitor</guideline>
     </monitor_guidelines>
     
 </prompt>
