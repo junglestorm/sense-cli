@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import typer
 
-from .commands import ask, chat, tools, version, role
+from .commands import chat, tools, version, role
 from .core.interaction import _interactive
 
 app = typer.Typer(add_completion=False, help="Stock Agent CLI - AI驱动的股票分析工具")
 
 # 注册命令
 app.command()(version)
-app.command()(ask)
 app.command()(chat)
 app.command()(tools)
 app.add_typer(role.app, name="role", help="角色管理命令")

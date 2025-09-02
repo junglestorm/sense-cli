@@ -28,7 +28,6 @@ def chat(
     asyncio.run(
         _interactive(
             model=model,
-            once=None,
             quiet=minimal,  # minimal模式对应quiet
             verbose=not minimal,  # 非minimal时verbose
             debug=False,
