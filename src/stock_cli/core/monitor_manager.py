@@ -123,6 +123,17 @@ class MonitorManager:
             except Exception as e:
                 logger.warning("停止监控器 %s 失败: %s", monitor_id, e)
 
+    async def get_monitor_info(self, monitor_id: str) -> Optional[Dict[str, Any]]:
+        """获取指定监控器的信息"""
+        task = self._active_monitors.get(monitor_id)
+        if not task:
+            return None
+        return {
+            "id": monitor_id,
+            "name": task.get_name().replace("monitor_", ""),
+            "running": not task.done(),
+        }
+
 
 # 添加全局函数以便导入
 async def get_monitor_manager() -> MonitorManager:
