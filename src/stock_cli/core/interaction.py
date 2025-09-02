@@ -148,7 +148,6 @@ async def _cleanup_mcp_resources():
 
 async def _interactive(
     model: Optional[str] = None,
-    once: Optional[str] = None,
     quiet: bool = False,
     verbose: bool = False,
     debug: bool = False,
@@ -157,7 +156,6 @@ async def _interactive(
     output_format: str = "text",
     timeout: int = 30,
     session_id: str = "default",
-    # ...existing code...
     role: Optional[str] = None,
 ):
     """交互式 CLI 主循环"""
@@ -244,44 +242,7 @@ async def _interactive(
 
 
     active_model = current_model() or "unknown"
-    if once:
-        if verbose:
-            print_banner(active_model, mode="once")
-        try:
-            res = await _run_agent_with_interrupt(
-                once,  # 传递用户问题
-                capture_steps=debug,
-                minimal=quiet or (not verbose and not debug),
-                session_id=session_id,
-                role_config=role_config,
-            )
-        except asyncio.CancelledError:
-            # 任务被取消
-            console.print("[yellow]任务已被停止[/yellow]")
-            # 继续进行资源清理
-        except Exception as e:  # noqa: BLE001
-            console.print(f"[red]Execution failed: {e}")
-        finally:
-            # 确保在一次性模式结束时优雅关闭 MCP，避免 anyio 作用域关闭报错
-            try:
-                from ..tools.mcp_server_manager import MCPServerManager
-                mgr = await MCPServerManager.get_instance()
-                await mgr.cleanup()
-            except Exception:
-                pass
-            # 关闭收件箱并注销在线会话
-            try:
-                await _shutdown_inbox_and_unregister()
-            except Exception:
-                pass
-        # 最终答案已经通过XML状态机流式输出，无需额外处理
-        # 但显示token使用统计信息
-        if res and 'token_usage' in res and res['token_usage']:
-            token_info = res['token_usage']
-            console.print(f"\n[dim]Token使用统计: context={token_info.get('context_tokens', 0)}, total={token_info.get('total_tokens', 0)}, prompt={token_info.get('prompt_tokens', 0)}, completion={token_info.get('completion_tokens', 0)}[/dim]")
-  
-        # 推理过程已经实时显示，不再重复显示
-        return
+    # 仅支持对话模式，单轮/once分支已移除
 
     # 进入交互循环
     if verbose:
