@@ -111,7 +111,8 @@ class MonitorManager:
         except asyncio.CancelledError:
             pass
         
-        del self._active_monitors[monitor_id]
+            if monitor_id in self._active_monitors:
+                del self._active_monitors[monitor_id]
         logger.info("停止监控器: %s", monitor_id)
     
     async def stop_all_monitors(self):
