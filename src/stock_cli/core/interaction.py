@@ -14,6 +14,8 @@ from rich import print
 from rich.console import Console
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+from prompt_toolkit.formatted_text import HTML
+from quote import quote
 
 from ..agent.runtime import ensure_kernel, get_kernel, current_model
 from ..core.session_manager import SessionManager
@@ -289,9 +291,10 @@ async def _interactive(
 
     while True:
         try:
-            user_input = await session.prompt_async("stock-cli> ")
+            user_input = await session.prompt_async(HTML('<ansicyan>stock-cli&gt; </ansicyan>'))
         except KeyboardInterrupt:
-            console.print("\n[yellow]Bye![/yellow]")
+            bye = quote('inspire', limit=1)
+            console.print(f"[yellow]{bye[0]['quote']}![/yellow]")
             try:
                 await _cleanup_mcp_resources()
             except Exception:
@@ -303,7 +306,8 @@ async def _interactive(
                 pass
             break
         except EOFError:
-            console.print("\n[yellow]Bye![/yellow]")
+            bye = quote('inspire', limit=1)
+            console.print(f"[yellow]{bye[0]['quote']}![/yellow]")
             try:
                 await _cleanup_mcp_resources()
             except Exception:
@@ -320,7 +324,8 @@ async def _interactive(
             continue
 
         if user_input in ["/quit", "/exit"]:
-            console.print("[yellow]Bye![/yellow]")
+            bye = quote('inspire', limit=1)
+            console.print(f"[yellow]{bye[0]['quote']}![/yellow]")
             try:
                 await _cleanup_mcp_resources()
             except Exception:
