@@ -29,6 +29,7 @@ dependencies = [
     "ta-lib>=0.6.5",
     "tiktoken>=0.11.0",
     "quote>=3.0",
+    "chroma>=0.2.0",
 ]
 
 [project.scripts]
