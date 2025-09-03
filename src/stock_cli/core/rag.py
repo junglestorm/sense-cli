@@ -146,6 +146,32 @@ class SimpleRAG:
             logger.error(f"文档检索失败: {str(e)}")
             return []
 
+    async def get_all_documents(self) -> List[Document]:
+        """获取所有文档"""
+        if not self.vector_store:
+            logger.warning("向量数据库不可用，无法获取文档")
+            return []
+            
+        try:
+            # 获取所有文档
+            results = self.vector_store.get()
+            
+            # 构造返回结果
+            documents = []
+            for i in range(len(results['ids'])):
+                doc = Document(
+                    id=results['ids'][i],
+                    content=results['documents'][i],
+                    metadata=results['metadatas'][i] if results['metadatas'] else None,
+                )
+                documents.append(doc)
+                
+            logger.info(f"获取到 {len(documents)} 个文档")
+            return documents
+        except Exception as e:
+            logger.error(f"获取文档失败: {str(e)}")
+            return []
+
 
 # 全局RAG实例
 _rag_instance: Optional[SimpleRAG] = None

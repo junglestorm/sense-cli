@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typer
 
-from .commands import chat, tools, version, role
+from .commands import chat, tools, version, role, rag
 from .core.interaction import _interactive
 
 app = typer.Typer(add_completion=False, help="Stock Agent CLI - AI驱动的股票分析工具")
@@ -14,6 +14,7 @@ app.command()(version)
 app.command()(chat)
 app.command()(tools)
 app.add_typer(role.app, name="role", help="角色管理命令")
+app.add_typer(rag, name="rag", help="RAG文档管理命令")
 
 __version__ = "1.1.0"
 

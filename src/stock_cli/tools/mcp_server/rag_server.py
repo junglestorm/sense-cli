@@ -38,7 +38,7 @@ async def search_documents(query: str, top_k: int = 5) -> dict:
         sys.path.insert(0, project_root)
         
         # 导入RAG模块
-        from src.stock_cli.core.rag import get_rag_instance, Document
+        from stock_cli.core.rag import get_rag_instance, Document
         
         # 获取RAG实例
         rag = await get_rag_instance()

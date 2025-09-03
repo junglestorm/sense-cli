@@ -31,6 +31,7 @@ dependencies = [
     "quote>=3.0",
     "chroma>=0.2.0",
     "httpx>=0.24.0",
+    "PyPDF2>=3.0.0",
 ]
 
 [project.scripts]
