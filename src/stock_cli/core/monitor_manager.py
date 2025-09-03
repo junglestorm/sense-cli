@@ -117,11 +117,23 @@ class MonitorManager:
     
     async def stop_all_monitors(self):
         """停止所有监控器"""
-        for monitor_id in list(self._active_monitors.keys()):
-            try:
-                await self.stop_monitor(monitor_id)
-            except Exception as e:
-                logger.warning("停止监控器 %s 失败: %s", monitor_id, e)
+        if not self._active_monitors:
+            return
+        
+        tasks = []
+        monitor_ids = list(self._active_monitors.keys())
+        
+        for monitor_id in monitor_ids:
+            task = asyncio.create_task(self.stop_monitor(monitor_id))
+            tasks.append(task)  
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error("停止监控器 %s 失败: %s", monitor_ids[i], result)
+            else:
+                logger.info("停止监控器 %s 成功", monitor_ids[i])
 
 
 # 添加全局函数以便导入
