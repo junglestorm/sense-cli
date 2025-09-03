@@ -153,3 +153,4 @@ logs/*
 dump.rdb
 src/logs/app.log
 src/logs/sessions/default.json
+data/db/rag_vector_store/*
