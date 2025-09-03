@@ -89,24 +89,61 @@ class SimpleRAG:
             raise
     
     async def add_documents(self, documents: List[Document]) -> bool:
-        """添加文档到向量数据库"""
+        """添加文档到向量数据库，支持主流文本、pdf、doc、docx文件"""
         if not self.vector_store:
             logger.warning("向量数据库不可用，无法添加文档")
             return False
-            
+
+
+        import yaml
+        import configparser
         try:
-            # 为文档生成嵌入
+            from PyPDF2 import PdfReader
+        except ImportError:
+            PdfReader = None
+        try:
+            import docx
+        except ImportError:
+            docx = None
+
+        def extract_content(doc: Document) -> str:
+            ext = os.path.splitext(doc.id)[1].lower()
+            content = doc.content
+            try:
+                if ext == '.pdf' and PdfReader is not None:
+                    with open(doc.id, 'rb') as f:
+                        reader = PdfReader(f)
+                        text = "\n".join(page.extract_text() or '' for page in reader.pages)
+                    return text
+                elif ext in {'.doc', '.docx'} and docx is not None:
+                    d = docx.Document(doc.id)
+                    text = "\n".join([p.text for p in d.paragraphs])
+                    return text
+                elif ext in {'.yaml', '.yml'}:
+                    data = yaml.safe_load(content)
+                    return yaml.dump(data, allow_unicode=True)
+                elif ext in {'.ini', '.cfg'}:
+                    parser = configparser.ConfigParser()
+                    parser.read_string(content)
+                    return str(dict(parser))
+                elif ext in {'.csv', '.tsv'}:
+                    return content  # 直接返回全部内容
+                else:
+                    return content  # 其它文本文件直接返回全部内容
+            except Exception as e:
+                logger.warning(f"解析文件 {doc.id} 失败: {e}")
+                return content
+
+        try:
             for doc in documents:
+                doc.content = extract_content(doc)
                 doc.embedding = await self._get_ollama_embedding(doc.content)
-            
-            # 存储到向量数据库
             self.vector_store.add(
                 documents=[doc.content for doc in documents],
                 embeddings=[doc.embedding for doc in documents],
                 ids=[doc.id for doc in documents],
                 metadatas=[doc.metadata for doc in documents]
             )
-            
             logger.info(f"成功添加 {len(documents)} 个文档到向量数据库")
             return True
         except Exception as e:
