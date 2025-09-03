@@ -151,3 +151,5 @@ yarn-error.log*
 logs/*
 !logs/.gitkeep
 dump.rdb
+src/logs/app.log
+src/logs/sessions/default.json
