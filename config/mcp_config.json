@@ -6,6 +6,13 @@
       "command": "python",
       "args": ["src/stock_cli/tools/mcp_server/time_server.py"],
       "env": {}
+    },
+    {
+      "name": "rag_server",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/rag_server.py"],
+      "env": {}
     }
   ]
 }

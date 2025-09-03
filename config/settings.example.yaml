@@ -40,3 +40,16 @@ session:
   default_session: "default"
   persist: true
   max_history: 50
+
+# RAG 配置
+rag:
+  # 向量数据库路径
+  vector_store_path: "data/db/rag_vector_store"
+  # 集合名称
+  collection_name: "stock_rag"
+  # Ollama嵌入模型配置
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "nomic-embed-text"
+  # 检索结果数量
+  top_k: 5
