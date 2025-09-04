@@ -123,10 +123,10 @@ async def search_documents(query: str, top_k: int = 5) -> dict:
 @mcp.tool()
 async def list_documents() -> dict:
     """
-    列出RAG数据库中的所有文档
+    列出RAG数据库中的所有原始文档（按文档分组，不显示具体chunks）
     
     返回:
-        dict: 包含所有文档的列表和文档数量统计
+        dict: 包含按原始文档分组的列表和统计信息
     """
     try:
         # 初始化向量数据库
@@ -138,39 +138,67 @@ async def list_documents() -> dict:
                 "error": "向量数据库不可用",
                 "documents": [],
                 "document_count": 0,
-                "chunk_count": 0
+                "total_chunks": 0
             }
         
-        # 获取所有文档
+        # 获取所有chunks
         results = _vector_store.get()
         
-        # 统计文档数量（基于唯一文件路径）
-        document_count = 0
-        seen_files = set()
+        # 按原始文档分组
+        documents_map = {}
+        total_chunks = len(results['ids'])
         
-        # 构造返回结果
-        documents = []
         for i in range(len(results['ids'])):
+            chunk_id = results['ids'][i]
             metadata = results['metadatas'][i] if results['metadatas'] else {}
-            file_path = metadata.get('file_path', '')
             
-            # 统计唯一文档数量
-            if file_path and file_path not in seen_files:
-                seen_files.add(file_path)
-                document_count += 1
+            # 从metadata获取原始文档标识
+            parent_id = metadata.get('parent_id')
+            file_path = metadata.get('file_path')
+            file_name = metadata.get('file_name')
             
-            documents.append({
-                "id": results['ids'][i],
-                "content": results['documents'][i],
-                "metadata": metadata
-            })
+            # 确定文档的唯一标识符（优先使用parent_id，然后是file_path）
+            doc_key = parent_id or file_path or chunk_id.split('__chunk_')[0]
+            
+            if doc_key not in documents_map:
+                documents_map[doc_key] = {
+                    "document_id": doc_key,
+                    "file_path": file_path or "",
+                    "file_name": file_name or doc_key,
+                    "chunk_count": 0,
+                    "total_size": 0,
+                    "first_chunk_content": "",
+                    "metadata": {
+                        "file_size": metadata.get('file_size'),
+                        "modified_time": metadata.get('modified_time'),
+                        "parent_id": parent_id
+                    }
+                }
+            
+            # 更新统计信息
+            documents_map[doc_key]["chunk_count"] += 1
+            chunk_size = metadata.get('chunk_size', len(results['documents'][i]))
+            documents_map[doc_key]["total_size"] += chunk_size
+            
+            # 保存第一个chunk的内容作为预览（通过chunk_index判断）
+            chunk_index = metadata.get('chunk_index', 0)
+            if chunk_index == 0 or not documents_map[doc_key]["first_chunk_content"]:
+                content = results['documents'][i]
+                # 截取前200个字符作为预览
+                documents_map[doc_key]["first_chunk_content"] = content[:200] + "..." if len(content) > 200 else content
+        
+        # 转换为列表格式
+        documents = list(documents_map.values())
+        
+        # 按文件名排序
+        documents.sort(key=lambda x: x["file_name"])
         
         return {
             "success": True,
             "documents": documents,
-            "document_count": document_count,
-            "chunk_count": len(documents),
-            "message": f"成功列出{document_count}个文档（{len(documents)}个分块）" if documents else "数据库中没有文档"
+            "document_count": len(documents),
+            "total_chunks": total_chunks,
+            "message": f"成功列出{len(documents)}个原始文档（共{total_chunks}个分块）" if documents else "数据库中没有文档"
         }
     except Exception as e:
         return {
@@ -178,7 +206,7 @@ async def list_documents() -> dict:
             "error": str(e),
             "documents": [],
             "document_count": 0,
-            "chunk_count": 0
+            "total_chunks": 0
         }
 
 if __name__ == "__main__":

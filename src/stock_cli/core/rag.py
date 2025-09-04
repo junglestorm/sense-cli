@@ -93,23 +93,83 @@ class SimpleRAG:
         if not self.vector_store:
             logger.warning("向量数据库不可用，无法添加文档")
             return 0
-
         try:
-            # 计算嵌入并批量入库
+            # 支持将长文档切分为多个 chunk 再入库，切分参数可在配置中设置
+            chunk_size = int(self.config.get("chunk_size", 1000))
+            chunk_overlap = int(self.config.get("chunk_overlap", 200))
+
+            to_store_texts = []
+            to_store_ids = []
+            to_store_metadatas = []
+
             for doc in documents:
-                doc.embedding = await self._get_ollama_embedding(doc.content)
-            
-            self.vector_store.add(
-                documents=[d.content for d in documents],
-                embeddings=[d.embedding for d in documents],
-                ids=[d.id for d in documents],
-                metadatas=[d.metadata for d in documents]
-            )
-            logger.info(f"成功添加 {len(documents)} 个文档到向量数据库")
-            return len(documents)
+                # 如果文档为空，跳过
+                if not doc or not doc.content:
+                    continue
+
+                # 使用元数据中已有的 parent_id 或 file_path 作为来源信息
+                base_metadata = doc.metadata.copy() if doc.metadata else {}
+
+                # 切分文本
+                chunks = self._split_text(doc.content, chunk_size, chunk_overlap)
+
+                # 为每个 chunk 构造存储条目
+                for idx, chunk in enumerate(chunks):
+                    chunk_id = f"{doc.id}__chunk_{idx}"
+                    meta = base_metadata.copy()
+                    meta.update({
+                        "parent_id": doc.id,
+                        "chunk_index": idx,
+                        "chunk_size": len(chunk),
+                    })
+
+                    to_store_texts.append(chunk)
+                    to_store_ids.append(chunk_id)
+                    to_store_metadatas.append(meta)
+
+            # 计算所有 chunk 的嵌入并批量入库
+            embeddings = []
+            for text in to_store_texts:
+                emb = await self._get_ollama_embedding(text)
+                embeddings.append(emb)
+
+            if to_store_texts:
+                self.vector_store.add(
+                    documents=to_store_texts,
+                    embeddings=embeddings,
+                    ids=to_store_ids,
+                    metadatas=to_store_metadatas,
+                )
+
+            logger.info(f"成功添加 {len(to_store_texts)} 个文档分片到向量数据库 (来自 {len(documents)} 个源文档)")
+            return len(to_store_texts)
         except Exception as e:
             logger.error(f"添加文档失败: {str(e)}")
             return 0
+
+    def _split_text(self, text: str, chunk_size: int = 1000, overlap: int = 200) -> List[str]:
+        """简单的滑动窗口文本切分器。
+
+        返回一组字符串片段。行为：以 chunk_size 为窗口长度，窗口之间重叠 overlap 个字符。
+        """
+        if not text:
+            return []
+
+        if chunk_size <= 0:
+            return [text]
+
+        step = max(1, chunk_size - max(0, overlap))
+        chunks: List[str] = []
+        start = 0
+        text_len = len(text)
+        while start < text_len:
+            end = start + chunk_size
+            chunks.append(text[start:end])
+            if end >= text_len:
+                break
+            start += step
+
+        return chunks
     
     async def retrieve(self, query: str, top_k: int = 5) -> List[Document]:
         """根据查询检索相关文档，供monitor中的桌面监视器调用"""
