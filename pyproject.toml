@@ -1,7 +1,7 @@
 [project]
-name = "stock-cli"
+name = "sense-cli"
 version = "1.0.0"
-description = "A Task-Driven ReAct Stock Analysis Agent with CLI Interface"
+description = "A Monitor-Driven, Context-Aware CLI Agent Platform (主动感知与监控驱动的智能体平台)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -28,12 +28,13 @@ dependencies = [
     "logging>=0.4.9.6",
     "ta-lib>=0.6.5",
     "tiktoken>=0.11.0",
+
     "quote>=3.0",
     "chroma>=0.2.0",
 ]
 
 [project.scripts]
-stock-cli = "stock_cli.main:app"
+sense-cli = "stock_cli.main:app"
 
 [build-system]
 requires = ["hatchling"]
