@@ -76,6 +76,57 @@ async def search_documents(query: str, top_k: int = 5) -> dict:
             "top_k": top_k
         }
 
+@mcp.tool()
+async def list_documents() -> dict:
+    """
+    列出RAG数据库中的所有文档
+    
+    返回:
+        dict: 包含所有文档的列表
+    """
+    try:
+        # 动态导入RAG模块，避免启动时依赖
+        import sys
+        import os
+        # 获取当前文件的目录
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # 构建项目根目录路径
+        project_root = os.path.join(current_dir, '..', '..', '..')
+        # 添加到Python路径
+        sys.path.insert(0, project_root)
+        
+        # 导入RAG模块
+        from stock_cli.core.rag import get_rag_instance, Document
+        
+        # 获取RAG实例
+        rag = await get_rag_instance()
+        if not rag:
+            return {
+                "error": "RAG系统不可用",
+                "documents": []
+            }
+        
+        # 列出所有文档
+        documents: list[Document] = await rag.list_documents()
+        
+        # 格式化结果
+        results = []
+        for doc in documents:
+            results.append({
+                "id": doc.id,
+                "content": doc.content,
+                "metadata": doc.metadata
+            })
+        
+        return {
+            "documents": results,
+            "message": f"成功列出{len(results)}个文档" if results else "数据库中没有文档"
+        }
+    except Exception as e:
+        return {
+            "error": str(e),
+            "documents": []
+        }
 
 if __name__ == "__main__":
     mcp.run()

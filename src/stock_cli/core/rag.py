@@ -208,6 +208,12 @@ class SimpleRAG:
         except Exception as e:
             logger.error(f"获取文档失败: {str(e)}")
             return []
+        
+    async def list_documents(self) -> List[Dict[str, Any]]:
+        """列出所有文档的基本信息"""
+        documents = await self.get_all_documents()
+        return [{"id": doc.id, "metadata": doc.metadata} for doc in documents]
+        
 
 
 # 全局RAG实例
