@@ -3,6 +3,7 @@
 from .session_inbox import register_session_inbox_monitor
 from .loop_timer import register_loop_timer_monitor
 from .fixed_time_timer import register_fixed_time_timer_monitor
+from .desktop_file_monitor import register_desktop_file_monitor
 
 async def register_all_monitors():
     """注册所有监控器"""
@@ -14,3 +15,6 @@ async def register_all_monitors():
     
     # 注册固定时间定时器监控器
     await register_fixed_time_timer_monitor()
+
+    # 注册桌面文件监控器
+    await register_desktop_file_monitor()

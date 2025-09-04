@@ -31,6 +31,9 @@ dependencies = [
 
     "quote>=3.0",
     "chroma>=0.2.0",
+    "httpx>=0.24.0",
+    "PyPDF2>=3.0.0",
+    "docx>=0.2.4",
 ]
 
 [project.scripts]
@@ -49,7 +52,8 @@ index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 
 
 
-dev-dependencies = [
+[project.optional-dependencies]
+dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "mypy>=1.4.0",

@@ -33,7 +33,12 @@ redis:
 redis-server
 ```
 
-### 4. 使用命令
+### 4 启动ollama
+```bash
+ollama pull nomic-embed-text
+```
+
+### 5. 使用命令
 ```bash
 # 交互式聊天
 uv run sense-cli chat --session-id my_session
@@ -63,7 +68,9 @@ uv run sense-cli role list
 - 基于 Redis 消息总线，支持跨会话、跨角色通信
 - 智能体可主动感知环境变化，自动归档、分析、响应
 
-监控器机制让平台具备高度自动化、主动感知和分布式智能体能力。
+支持通过自然语言指令为会话开启桌面监控器，自动将桌面文档转化为 RAG 数据库，并持续监控桌面文档的变化，实现文档的实时同步与智能检索。
+
+监控器和多智能体机制让平台具备高度自动化和分布式智能体协作能力。
 
 ## 🔧 配置文件
 
