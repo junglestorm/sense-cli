@@ -33,10 +33,56 @@ async def add_file_to_rag(file_path: str, target_session: str) -> bool:
             logger.warning("RAG实例不可用，无法添加文件: %s", file_path)
             return False
         
-        # 创建Document对象，内容将在add_documents中提取
+        # 读取文件内容
+        content = ""
+        try:
+            # 检查文件扩展名
+            _, ext = os.path.splitext(file_path)
+            if ext.lower() == '.pdf':
+                # 处理PDF文件
+                try:
+                    import PyPDF2
+                    with open(file_path, 'rb') as f:
+                        pdf_reader = PyPDF2.PdfReader(f)
+                        content = ""
+                        for page in pdf_reader.pages:
+                            content += page.extract_text() + "\n"
+                except ImportError:
+                    logger.warning("缺少PDF处理库PyPDF2，无法处理PDF文件: %s", file_path)
+                    return False
+            elif ext.lower() in {'.doc', '.docx'}:
+                # 处理Word文档（目前仅支持文本提取，需要安装python-docx）
+                try:
+                    import docx
+                    doc = docx.Document(file_path)
+                    content = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+                except ImportError:
+                    logger.warning("缺少Word处理库python-docx，无法处理Word文件: %s", file_path)
+                    return False
+                except Exception as e:
+                    logger.warning("处理Word文件失败: %s, 错误: %s", file_path, e)
+                    return False
+            else:
+                # 处理文本文件
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                except UnicodeDecodeError:
+                    # 尝试其他编码
+                    try:
+                        with open(file_path, 'r', encoding='gbk') as f:
+                            content = f.read()
+                    except:
+                        logger.warning("无法读取文件内容: %s", file_path)
+                        return False
+        except Exception as e:
+            logger.error("读取文件失败: %s, 错误: %s", file_path, e)
+            return False
+        
+        # 创建Document对象
         document = Document(
             id=file_path,
-            content="",  # 内容将在extract_content中填充
+            content=content,
             metadata={
                 "file_path": file_path,
                 "file_name": os.path.basename(file_path),

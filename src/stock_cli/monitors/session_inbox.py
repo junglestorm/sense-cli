@@ -59,9 +59,9 @@ async def session_inbox_monitor(arguments: Dict[str, Any]):
             logger.info("忽略非本会话消息: to_sid=%s, session_id=%s", to_sid, session_id)
             return
             
-        # 确保消息是发送给当前会话的
-        if to_sid and to_sid != session_id:
-            logger.info("忽略非本会话消息: to_sid=%s, session_id=%s", to_sid, session_id)
+        # 防止自引用：如果发送者就是当前会话，忽略消息
+        if from_sid and from_sid == session_id:
+            logger.info("忽略自引用消息: from_sid=%s, session_id=%s", from_sid, session_id)
             return
             
         # 构造用户可见的注入消息，保持与 chat 输入一致的表现

@@ -164,7 +164,7 @@
 </thinking>
 
 <communication>
-{"target":"sam","message":"你好，我是bill，会话间协作请求：请拉取最近的K线简报并回传。"}
+{"target":"目标session_id","message":"你好，我是{current_session_id}，会话间协作请求：请拉取最近的K线简报并回传。"}
 </communication>
 ]]>
             </example>

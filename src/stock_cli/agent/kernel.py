@@ -270,7 +270,9 @@ class AgentKernel:
             comm_json = json.dumps({"communication": {"target": comm_target, "message": comm_message}}, ensure_ascii=False)
             self.session.append_qa({"role": "assistant", "content": comm_json})
             try:
-                subs = await RedisBus.publish_message(self.session.session_id, comm_target, comm_message)
+                # 在消息内容中包含当前会话ID，让接收方知道消息来源
+                enhanced_message = f"[来自 {self.session.session_id}] {comm_message}"
+                subs = await RedisBus.publish_message(self.session.session_id, comm_target, enhanced_message)
                 observation = f"Communication sent to '{comm_target}'. subscribers={subs}"
             except Exception as e:
                 observation = f"ERROR: communication failed: {e}"

@@ -1,4 +1,4 @@
-"""RAG支持模块，提供基本的嵌入模型召回策略"""
+"""RAG支持模块，专为monitor中的桌面监视器设计"""
 
 import asyncio
 import logging
@@ -28,7 +28,7 @@ class Document:
 
 
 class SimpleRAG:
-    """简单的RAG支持类"""
+    """简单的RAG支持类，专为monitor中的桌面监视器设计"""
     
     def __init__(self, config: Dict[str, Any]):
         """初始化RAG系统"""
@@ -88,70 +88,31 @@ class SimpleRAG:
             logger.error(f"获取Ollama嵌入失败: {str(e)}")
             raise
     
-    async def add_documents(self, documents: List[Document]) -> bool:
-        """添加文档到向量数据库，支持主流文本、pdf、doc、docx文件"""
+    async def add_documents(self, documents: List[Document]) -> int:
+        """添加文档到向量数据库，供monitor中的桌面监视器调用"""
         if not self.vector_store:
             logger.warning("向量数据库不可用，无法添加文档")
-            return False
-
-
-        import yaml
-        import configparser
-        try:
-            from PyPDF2 import PdfReader
-        except ImportError:
-            PdfReader = None
-        try:
-            import docx
-        except ImportError:
-            docx = None
-
-        def extract_content(doc: Document) -> str:
-            ext = os.path.splitext(doc.id)[1].lower()
-            content = doc.content
-            try:
-                if ext == '.pdf' and PdfReader is not None:
-                    with open(doc.id, 'rb') as f:
-                        reader = PdfReader(f)
-                        text = "\n".join(page.extract_text() or '' for page in reader.pages)
-                    return text
-                elif ext in {'.doc', '.docx'} and docx is not None:
-                    d = docx.Document(doc.id)
-                    text = "\n".join([p.text for p in d.paragraphs])
-                    return text
-                elif ext in {'.yaml', '.yml'}:
-                    data = yaml.safe_load(content)
-                    return yaml.dump(data, allow_unicode=True)
-                elif ext in {'.ini', '.cfg'}:
-                    parser = configparser.ConfigParser()
-                    parser.read_string(content)
-                    return str(dict(parser))
-                elif ext in {'.csv', '.tsv'}:
-                    return content  # 直接返回全部内容
-                else:
-                    return content  # 其它文本文件直接返回全部内容
-            except Exception as e:
-                logger.warning(f"解析文件 {doc.id} 失败: {e}")
-                return content
+            return 0
 
         try:
+            # 计算嵌入并批量入库
             for doc in documents:
-                doc.content = extract_content(doc)
                 doc.embedding = await self._get_ollama_embedding(doc.content)
+            
             self.vector_store.add(
-                documents=[doc.content for doc in documents],
-                embeddings=[doc.embedding for doc in documents],
-                ids=[doc.id for doc in documents],
-                metadatas=[doc.metadata for doc in documents]
+                documents=[d.content for d in documents],
+                embeddings=[d.embedding for d in documents],
+                ids=[d.id for d in documents],
+                metadatas=[d.metadata for d in documents]
             )
             logger.info(f"成功添加 {len(documents)} 个文档到向量数据库")
-            return True
+            return len(documents)
         except Exception as e:
             logger.error(f"添加文档失败: {str(e)}")
-            return False
+            return 0
     
     async def retrieve(self, query: str, top_k: int = 5) -> List[Document]:
-        """根据查询检索相关文档"""
+        """根据查询检索相关文档，供monitor中的桌面监视器调用"""
         if not self.vector_store:
             logger.warning("向量数据库不可用，无法检索文档")
             return []
@@ -184,7 +145,7 @@ class SimpleRAG:
             return []
 
     async def get_all_documents(self) -> List[Document]:
-        """获取所有文档"""
+        """获取所有文档，供monitor中的桌面监视器调用"""
         if not self.vector_store:
             logger.warning("向量数据库不可用，无法获取文档")
             return []
@@ -210,7 +171,7 @@ class SimpleRAG:
             return []
         
     async def list_documents(self) -> List[Dict[str, Any]]:
-        """列出所有文档的基本信息"""
+        """列出所有文档的基本信息，供monitor中的桌面监视器调用"""
         documents = await self.get_all_documents()
         return [{"id": doc.id, "metadata": doc.metadata} for doc in documents]
         
