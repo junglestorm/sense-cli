@@ -32,7 +32,12 @@ redis:
 redis-server
 ```
 
-### 4. 使用命令
+### 4 启动ollama
+```bash
+ollama pull nomic-embed-text
+```
+
+### 5. 使用命令
 ```bash
 # 交互式聊天
 uv run stock-cli chat --session-id my_session
@@ -49,20 +54,7 @@ uv run stock-cli role list
 
 ## 📋 核心功能
 
-### 角色系统
-角色是平台的核心概念，支持配置不同的系统提示词和可用工具集。角色配置文件位于 `config/roles/` 目录：
 
-```yaml
-name: technical_analyst
-description: 技术分析师
-system_prompt: 你是一名技术分析师，专注于数据分析和技术指标解读...
-allowed_mcp_servers: [data_insight, context_retriever]
-```
-
-启动角色只需指定角色名称：
-```bash
-uv run stock-cli chat --role technical_analyst
-```
 
 
 ### 监控器系统与多智能体交互
@@ -73,6 +65,8 @@ uv run stock-cli chat --role technical_analyst
 - 所有监控器均可动态启动/停止，异步执行
 - 基于 Redis 消息总线，支持跨会话、跨角色通信
 - 多角色可通过消息互发、协作，构建复杂自动化流程
+
+支持通过自然语言指令为会话开启桌面监控器，自动将桌面文档转化为 RAG 数据库，并持续监控桌面文档的变化，实现文档的实时同步与智能检索。
 
 监控器和多智能体机制让平台具备高度自动化和分布式智能体协作能力。
 
