@@ -7,7 +7,7 @@ import httpx
 from typing import List, Dict, Any, Optional
 import asyncio
 import pandas as pd
-import pymupdf4llm 
+import pymupdf4llm as pdf
 
 # 仅调整本模块与相关MCP模块的日志级别，避免影响全局 root logger
 logger = logging.getLogger(__name__)
@@ -222,7 +222,7 @@ async def get_document(document_url: str) -> dict:
     返回:
         dict: 包含文档完整内容的字典，或错误信息
     """
-    doc = pymupdf4llm.open(document_url)
+    doc = pdf.to_markdown(document_url)
     if doc is not None:
         return {"success": True, "content": doc}
     return {"success": False, "error": "未能提取文档内容"}
