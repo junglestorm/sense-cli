@@ -1,6 +1,7 @@
-# MCP 多智能体自动化平台
 
-本平台是一个支持自动化触发、多会话上下文、多智能体协作的命令行智能体系统。
+# sense-cli · 主动感知与监控驱动的智能体平台
+
+**sense-cli** 是一个以“监控器驱动”为核心、支持自动化触发、多会话上下文的命令行多智能体平台。它强调主动感知、环境理解和用户行为洞察。
 
 ## 🚀 快速开始
 
@@ -40,16 +41,16 @@ ollama pull nomic-embed-text
 ### 5. 使用命令
 ```bash
 # 交互式聊天
-uv run stock-cli chat --session-id my_session
+uv run sense-cli chat --session-id my_session
 
 # 使用特定角色进行交互式聊天
-uv run stock-cli chat --session-id my_session --role assistant
+uv run sense-cli chat --session-id my_session --role assistant
 
 # 查看可用工具
-uv run stock-cli tools
+uv run sense-cli tools
 
 # 查看活动角色会话
-uv run stock-cli role list
+uv run sense-cli role list
 ```
 
 ## 📋 核心功能
@@ -59,12 +60,13 @@ uv run stock-cli role list
 
 ### 监控器系统与多智能体交互
 
-平台内置监控器系统，实现自动化任务与多智能体协作：
 
-- 支持循环定时、定点定时、会话消息监听等多种监控器
+平台内置“监控器”系统，支持多种自动化感知与触发：
+
+- 支持循环定时、定点定时、桌面/文件/消息等多种监控器
 - 所有监控器均可动态启动/停止，异步执行
 - 基于 Redis 消息总线，支持跨会话、跨角色通信
-- 多角色可通过消息互发、协作，构建复杂自动化流程
+- 智能体可主动感知环境变化，自动归档、分析、响应
 
 支持通过自然语言指令为会话开启桌面监控器，自动将桌面文档转化为 RAG 数据库，并持续监控桌面文档的变化，实现文档的实时同步与智能检索。
 
@@ -90,4 +92,4 @@ session:
 ```
 
 ## 💡 提示
-使用 `uv run stock-cli --help` 查看所有可用命令和选项。
+使用 `uv run sense-cli --help` 查看所有可用命令和选项。

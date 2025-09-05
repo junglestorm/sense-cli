@@ -12,48 +12,51 @@ def show_logo():
     """显示专业风格的logo"""
     console = Console()
     f = Figlet(font="slant", width=120)
-    logo_text = f.renderText("Stock Agent CLI")
+    logo_text = f.renderText("SENSE-CLI")
     console.print(f"[bold blue]{logo_text}[/bold blue]")
-    console.print(
-        "[green]AI-Powered Stock Analysis Tool powered by ReAct Architecture[/green]\n"
-    )
+    console.print("[green]Monitor-Driven, Context-Aware Agent Platform (主动感知与监控驱动的智能体平台)[/green]\n")
 
 
 def show_help():
     """显示帮助信息"""
     from ..cli import __version__
     console = Console()
+    try:
+      from ..cli import __version__
+    except ImportError:
+      __version__ = ""
     help_text = f"""
-[bold blue]Stock Agent CLI v{__version__} - 帮助[/bold blue]
+  [bold blue]sense-cli v{__version__} - 主动感知与监控驱动的智能体平台[/bold blue]
 
-[yellow]基本用法:[/yellow]
-  直接输入问题与AI对话，所有模式都会显示AI的思考过程
+  [yellow]基本用法:[/yellow]
+    直接输入问题与AI对话，所有模式都会显示AI的思考过程
 
-[yellow]中断功能:[/yellow]
-  在任何模式下，当 AI 正在思考或生成答案时：
-  • 按 Ctrl+C 可以中断当前任务
-  • 中断后可以立即输入新的问题
-  
-[yellow]特殊命令:[/yellow]
-  /help, /h      - 显示此帮助信息
-  /tools         - 列出可用工具
-  /status        - 显示系统状态
-  /clear         - 清屏
-  /reset         - 清空会话记忆
-  /version       - 显示版本信息
-  /quit, /exit   - 退出程序
+  [yellow]中断功能:[/yellow]
+    在任何模式下，当 AI 正在思考或生成答案时：
+    • 按 Ctrl+C 可以中断当前任务
+    • 中断后可以立即输入新的问题
+    
+  [yellow]特殊命令:[/yellow]
+    /help, /h      - 显示此帮助信息
+    /tools         - 列出可用工具
+    /status        - 显示系统状态
+    /clear         - 清屏
+    /reset         - 清空会话记忆
+    /version       - 显示版本信息
+    /quit, /exit   - 退出程序
 
-[yellow]示例问题:[/yellow]
-  分析一下阿里巴巴的股价走势
-  帮我查找最近的股市新闻
-  比较一下腾讯和阿里巴巴的财务数据
+  [yellow]示例问题:[/yellow]
+    分析一下阿里巴巴的股价走势
+    帮我查找最近的股市新闻
+    比较一下腾讯和阿里巴巴的财务数据
 
-[yellow]命令行选项:[/yellow]
-  --help         - 显示命令帮助
-  --version, -V  - 显示版本信息
-  --debug, -d    - 显示调试信息
-  --no-color     - 禁用彩色输出
-"""
+  [yellow]命令行选项:[/yellow]
+    --help         - 显示命令帮助
+    --version, -V  - 显示版本信息
+    --debug, -d    - 显示调试信息
+    --no-color     - 禁用彩色输出
+  """
+    console = Console()
     console.print(help_text.strip())
 
 
