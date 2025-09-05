@@ -10,8 +10,12 @@ from ..utils.redis_bus import RedisBus
 
 logger = logging.getLogger(__name__)
 
-# 桌面路径，跨平台支持
-DESKTOP_PATH = os.path.expanduser('~/Desktop')
+# 跨平台桌面路径
+import sys
+if sys.platform == 'win32':
+    DESKTOP_PATH = os.path.join(os.environ['USERPROFILE'], 'Desktop')
+else:
+    DESKTOP_PATH = os.path.expanduser('~/Desktop')
 
 # 只支持pdf、doc、docx文件类型
 SUPPORTED_EXTS = {'.pdf', '.doc', '.docx','.txt','pptx','xlsx'}
