@@ -6,7 +6,8 @@ from chromadb.config import Settings
 import httpx
 from typing import List, Dict, Any, Optional
 import asyncio
-import pymupdf
+import pandas as pd
+import pymupdf4llm 
 
 # 仅调整本模块与相关MCP模块的日志级别，避免影响全局 root logger
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ async def _get_ollama_embedding(text: str) -> List[float]:
         raise
 
 @mcp.tool()
-async def search_documents(query: str, top_k: int = 5) -> dict:
+async def search_slices_from_documents(query: str, top_k: int = 5) -> dict:
     """
     在RAG数据库中搜索相关片段（由RAG内部切割），不做任何分段处理
     参数:
@@ -122,9 +123,9 @@ async def search_documents(query: str, top_k: int = 5) -> dict:
         }
 
 @mcp.tool()
-async def list_documents() -> dict:
+async def list_all_documents() -> dict:
     """
-    列出RAG数据库中的所有原始文档（按文档分组，不显示具体chunks）
+    列出RAG数据库中的所有原始文档metadata列表（按文档分组，不显示具体chunks）
     
     返回:
         dict: 包含按原始文档分组的列表和统计信息
@@ -221,11 +222,12 @@ async def get_document(document_url: str) -> dict:
     返回:
         dict: 包含文档完整内容的字典，或错误信息
     """
-    doc = pymupdf.open(document_url)
-    output =  [page.get_text().encode("utf-8") for page in doc]
-    if output:
-        return {"success": True, "content": output}
+    doc = pymupdf4llm.open(document_url)
+    if doc is not None:
+        return {"success": True, "content": doc}
     return {"success": False, "error": "未能提取文档内容"}
+
+
 
 if __name__ == "__main__":
     mcp.run()
