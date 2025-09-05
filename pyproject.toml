@@ -33,11 +33,12 @@ dependencies = [
     "httpx>=0.24.0",
     "PyPDF2>=3.0.0",
     "docx>=0.2.4",
-    "pymupdf>=1.26.4",
+    "pymupdf4llm>=0.0.27",
 ]
 
 [project.scripts]
 sense-cli = "stock_cli.main:app"
+clean = "stock_cli.utils.clean:main"
 
 [build-system]
 requires = ["hatchling"]

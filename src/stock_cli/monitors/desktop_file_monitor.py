@@ -3,7 +3,7 @@ import time
 import asyncio
 import logging
 from typing import Dict, Any, Set
-import pymupdf
+import pymupdf4llm as pdf
 from ..core.monitor_manager import Monitor, get_monitor_manager
 from ..core.rag import get_rag_instance, Document
 from ..utils.redis_bus import RedisBus
@@ -39,13 +39,7 @@ async def add_file_to_rag(file_path: str, target_session: str) -> bool:
         try:
             # 统一用PyMuPDF读取所有支持的文件类型
             try:
-                doc = pymupdf.open(file_path)
-                content = ""
-                for page in doc:
-                    page_text = page.get_text().encode("utf-8")
-                    if page_text:
-                        content += page_text + "\n"
-                doc.close()
+                content: str = pdf.to_markdown(file_path) # 读取为markdown文本
             except ImportError:
                 logger.warning("缺少PyMuPDF库，无法处理文件: %s", file_path)
                 return False
