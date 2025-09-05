@@ -3,6 +3,7 @@ import time
 import asyncio
 import logging
 from typing import Dict, Any, Set
+import pymupdf
 from ..core.monitor_manager import Monitor, get_monitor_manager
 from ..core.rag import get_rag_instance, Document
 from ..utils.redis_bus import RedisBus
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 DESKTOP_PATH = os.path.expanduser('~/Desktop')
 
 # 只支持pdf、doc、docx文件类型
-SUPPORTED_EXTS = {'.pdf', '.doc', '.docx'}
+SUPPORTED_EXTS = {'.pdf', '.doc', '.docx','.txt','pptx','xlsx'}
 SCAN_INTERVAL = 10  # 秒
 
 async def scan_desktop_files() -> Set[str]:
@@ -36,45 +37,21 @@ async def add_file_to_rag(file_path: str, target_session: str) -> bool:
         # 读取文件内容
         content = ""
         try:
-            # 检查文件扩展名
-            _, ext = os.path.splitext(file_path)
-            if ext.lower() == '.pdf':
-                # 处理PDF文件
-                try:
-                    import PyPDF2
-                    with open(file_path, 'rb') as f:
-                        pdf_reader = PyPDF2.PdfReader(f)
-                        content = ""
-                        for page in pdf_reader.pages:
-                            content += page.extract_text() + "\n"
-                except ImportError:
-                    logger.warning("缺少PDF处理库PyPDF2，无法处理PDF文件: %s", file_path)
-                    return False
-            elif ext.lower() in {'.doc', '.docx'}:
-                # 处理Word文档（目前仅支持文本提取，需要安装python-docx）
-                try:
-                    import docx
-                    doc = docx.Document(file_path)
-                    content = "\n".join([paragraph.text for paragraph in doc.paragraphs])
-                except ImportError:
-                    logger.warning("缺少Word处理库python-docx，无法处理Word文件: %s", file_path)
-                    return False
-                except Exception as e:
-                    logger.warning("处理Word文件失败: %s, 错误: %s", file_path, e)
-                    return False
-            else:
-                # 处理文本文件
-                try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        content = f.read()
-                except UnicodeDecodeError:
-                    # 尝试其他编码
-                    try:
-                        with open(file_path, 'r', encoding='gbk') as f:
-                            content = f.read()
-                    except:
-                        logger.warning("无法读取文件内容: %s", file_path)
-                        return False
+            # 统一用PyMuPDF读取所有支持的文件类型
+            try:
+                doc = pymupdf.open(file_path)
+                content = ""
+                for page in doc:
+                    page_text = page.get_text().encode("utf-8")
+                    if page_text:
+                        content += page_text + "\n"
+                doc.close()
+            except ImportError:
+                logger.warning("缺少PyMuPDF库，无法处理文件: %s", file_path)
+                return False
+            except Exception as e:
+                logger.warning("用PyMuPDF读取文件失败: %s, 错误: %s", file_path, e)
+                return False
         except Exception as e:
             logger.error("读取文件失败: %s, 错误: %s", file_path, e)
             return False

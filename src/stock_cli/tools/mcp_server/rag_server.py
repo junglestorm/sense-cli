@@ -6,6 +6,7 @@ from chromadb.config import Settings
 import httpx
 from typing import List, Dict, Any, Optional
 import asyncio
+import pymupdf
 
 # 仅调整本模块与相关MCP模块的日志级别，避免影响全局 root logger
 logger = logging.getLogger(__name__)
@@ -208,6 +209,23 @@ async def list_documents() -> dict:
             "document_count": 0,
             "total_chunks": 0
         }
+    
+@mcp.tool()    
+async def get_document(document_url: str) -> dict:
+    """
+    根据目标文档地址获取完整的文档内容
+
+    参数:
+        document_url (str): 目标文档的URL地址
+
+    返回:
+        dict: 包含文档完整内容的字典，或错误信息
+    """
+    doc = pymupdf.open(document_url)
+    output =  [page.get_text().encode("utf-8") for page in doc]
+    if output:
+        return {"success": True, "content": output}
+    return {"success": False, "error": "未能提取文档内容"}
 
 if __name__ == "__main__":
     mcp.run()
