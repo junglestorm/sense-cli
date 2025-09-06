@@ -48,10 +48,14 @@ async def get_url_content(url: str) -> Dict[str, Any]:
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
             text_content = soup.get_text(separator='\n', strip=True)
-            return {"success":True, "url": url, "content": text_content}
+            # 提取所有a标签的href属性
+            links = [a.get('href') for a in soup.find_all('a', href=True)]
+            return {"success": True, "url": url, "content": text_content, "links": links}
     except Exception as e:
         logger.error(f"获取URL内容失败 ({url}): {str(e)}")
         return {"success":False, "url": url, "error": str(e)}
+    
+
     
 if __name__ == "__main__":
     mcp.run()
