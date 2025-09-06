@@ -109,6 +109,7 @@ async def search_slices_from_documents(query: str, top_k: int = 5) -> dict:
             retrieved_docs.append(doc)
             
         return {
+            "success": True,
             "query": query,
             "results": retrieved_docs,
             "top_k": top_k,
@@ -116,6 +117,7 @@ async def search_slices_from_documents(query: str, top_k: int = 5) -> dict:
         }
     except Exception as e:
         return {
+            "success": False,
             "error": str(e),
             "query": query,
             "results": [],

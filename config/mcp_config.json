@@ -13,6 +13,13 @@
       "command": "python",
       "args": ["src/stock_cli/tools/mcp_server/rag_server.py"],
       "env": {}
+    },
+    {
+      "name": "browser_server",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/browser_server.py"],
+      "env": {}
     }
   ]
 }
