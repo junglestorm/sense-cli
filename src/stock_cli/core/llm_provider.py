@@ -96,7 +96,7 @@ class LLMProvider:
                 "temperature": temperature,
                 "timeout": timeout,
             }
-            if provider in ["openai", "aihubmix", "deepseek"]:
+            if provider in ["openai", "aihubmix", "deepseek", "chatglm"]:
                 params["max_completion_tokens"] = max_tokens or 1024
             else:
                 params["max_tokens"] = max_tokens or 1024
@@ -206,7 +206,7 @@ class LLMProviderFactory:
     def create_provider(provider_name: str, config: Dict[str, Any]) -> LLMProvider:
         """根据配置创建LLMProvider实例"""
         # 支持的提供商列表
-        supported_providers = ["openai", "deepseek", "ollama"]
+        supported_providers = ["openai", "deepseek", "ollama","chatglm"]
         if provider_name not in supported_providers:
             raise ValueError(
                 f"Unsupported provider: {provider_name}. Supported providers: {supported_providers}"
