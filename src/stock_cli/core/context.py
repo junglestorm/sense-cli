@@ -1,3 +1,12 @@
+import logging
+from typing import Any, Dict
+
+from .types import  Task
+
+logger = logging.getLogger(__name__)
+
+
+
 TOOL_POLICY = (
     "Tool use policy:\n"
     "1. 在 <action> 中输出严格 JSON: {\"tool\": \"name\", \"arguments\": {...}} (双引号, 无多余文本)。\n"
@@ -9,25 +18,6 @@ TOOL_POLICY = (
 """
 上下文和记忆管理模块
 """
-
-import json
-import logging
-import os
-import sqlite3
-from typing import Any, Dict, List
-
-from .types import MemoryEntry, Task
-
-logger = logging.getLogger(__name__)
-
-try:
-    import chromadb
-    from chromadb.config import Settings
-
-    CHROMADB_AVAILABLE = True
-except ImportError:
-    CHROMADB_AVAILABLE = False
-    logger.warning("ChromaDB不可用，长期记忆功能将被禁用")
 
 
 class MemoryManager:
