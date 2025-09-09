@@ -7,7 +7,7 @@ import asyncio
 import logging
 import time
 import traceback
-from typing import Optional, List, Callable, Awaitable, Dict, Any
+from typing import Optional, List, Dict, Any
 
 import typer
 from rich import print
@@ -22,7 +22,7 @@ from ..agent.runtime import ensure_kernel, get_kernel, current_model
 from ..core.session_manager import SessionManager
 from ..utils.display import show_help, show_status, print_banner
 from ..utils.redis_bus import RedisBus
-from ..core.config_resolver import resolve_settings_path, load_settings
+from ..core.session_lock import get_session_lock
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -98,43 +98,47 @@ async def _run_agent_with_interrupt(
 
 
     # 直接通过 Kernel.run 执行，保持统一入口（Kernel 内部负责 append_qa 与 Task 创建）
-    _current_task = asyncio.create_task(
-        kernel.run(
-            question,
-            progress_cb=on_progress,
-            record_user_question=True,
+    # 使用 session 级锁确保同一会话下 kernel 串行执行
+    lock = get_session_lock(session_id)
+    
+    async with lock:
+        _current_task = asyncio.create_task(
+            kernel.run(
+                question,
+                progress_cb=on_progress,
+                record_user_question=True,
+            )
         )
-    )
 
-    try:
-        answer = await _current_task
-        latency = time.time() - start_t
+        try:
+            answer = await _current_task
+            latency = time.time() - start_t
 
-        # 获取当前请求的token使用量（使用tiktoken计算的上下文token）
-        token_usage_info = {}
-        if hasattr(kernel, '_current_request_token_usage'):
-            token_usage_info = kernel._current_request_token_usage
-        
-        result = {
-            "answer": answer,
-            "model": kernel.llm_provider.model if kernel.llm_provider else "unknown",
-            "latency": latency,
-            "reasoning": progress_lines if capture_steps else [],
-            "token_usage": token_usage_info,
-        }
+            # 获取当前请求的token使用量（使用tiktoken计算的上下文token）
+            token_usage_info = {}
+            if hasattr(kernel, '_current_request_token_usage'):
+                token_usage_info = kernel._current_request_token_usage
+            
+            result = {
+                "answer": answer,
+                "model": kernel.llm_provider.model if kernel.llm_provider else "unknown",
+                "latency": latency,
+                "reasoning": progress_lines if capture_steps else [],
+                "token_usage": token_usage_info,
+            }
 
-        return result
+            return result
 
-    except asyncio.CancelledError:
-        # 任务被取消
-        if _current_task:
-            _current_task.cancel()
-        raise
-    except Exception as e:  # noqa: BLE001
-        # 其余异常向上抛出，由调用侧统一处理
-        raise
-    finally:
-        _current_task = None
+        except asyncio.CancelledError:
+            # 任务被取消
+            if _current_task:
+                _current_task.cancel()
+            raise
+        except Exception as e:  # noqa: BLE001
+            # 其余异常向上抛出，由调用侧统一处理
+            raise
+        finally:
+            _current_task = None
 
 async def _cleanup_mcp_resources():
     """优雅清理 MCP 资源，避免 anyio cancel scope 异常"""
