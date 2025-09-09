@@ -10,6 +10,7 @@ from ..core.monitor_manager import Monitor, get_monitor_manager
 from ..utils.redis_bus import RedisBus
 from ..core.session import SessionManager
 from ..core.interaction import _run_agent_with_interrupt
+from ..core.session_lock import get_session_lock
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,25 @@ async def session_inbox_monitor(arguments: Dict[str, Any]):
             
         # 构造用户可见的注入消息，保持与 chat 输入一致的表现
         incoming = f"[来自 {from_sid or 'unknown'}] {content}"
+
+        # 等待会话级锁释放后再打印/注入会话内容，避免在上一个任务仍在运行时提前打印。
+        # 注意：这里短暂 acquire() -> release() 只是等待锁的可用性，但不在 inbox 中持有锁，
+        # 否则会与后续 _run_agent_with_interrupt() 中对同一锁的 acquire() 导致死锁。
+        try:
+            lock = get_session_lock(session_id)
+            # 如果锁被占用则等待；如果当前未被占用，acquire() 会立即返回。
+            await lock.acquire()
+            # 立即释放，表示我们观察到会话当前处于空闲状态。
+            lock.release()
+        except asyncio.CancelledError:
+            # 如果监控任务被取消，则不继续处理此消息
+            logger.info("waiting for session lock was cancelled: session=%s", session_id)
+            raise
+        except Exception:
+            # 出于稳健性考虑，如果检查锁失败也不阻塞处理，回退为立即显示
+            logger.exception("error while waiting for session lock, proceeding to print message")
+
+        # 现在注入并打印（这时会话处于空闲或已恢复空闲）
         session.append_qa({"role": "user", "content": content})  # 直接使用原始内容
         console.print(f"\n[bold blue]stock-cli>[/bold blue] {incoming}")
         
