@@ -1,5 +1,5 @@
 import os
-import time
+import sys
 import asyncio
 import logging
 from typing import Dict, Any, Set
@@ -11,7 +11,6 @@ from ..utils.redis_bus import RedisBus
 logger = logging.getLogger(__name__)
 
 # 跨平台桌面路径
-import sys
 if sys.platform == 'win32':
     DESKTOP_PATH = os.path.join(os.environ['USERPROFILE'], 'Desktop')
 else:

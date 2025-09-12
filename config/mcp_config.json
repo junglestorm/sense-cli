@@ -20,6 +20,13 @@
       "command": "python",
       "args": ["src/stock_cli/tools/mcp_server/browser_server.py"],
       "env": {}
+    },
+    {
+      "name": "tavily_server",
+      "type": "stdio",
+      "command": "python",
+      "args": ["src/stock_cli/tools/mcp_server/websearch_server.py"],
+      "env": {}
     }
   ]
 }

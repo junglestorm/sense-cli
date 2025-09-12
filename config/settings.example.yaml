@@ -59,3 +59,5 @@ rag:
     model: "nomic-embed-text"
   # 检索结果数量
   top_k: 5
+
+tavily_api_key: "your-tavily-api-key"  # 请替换为您的Tavily API密钥

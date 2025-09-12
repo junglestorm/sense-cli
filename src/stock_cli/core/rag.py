@@ -1,11 +1,9 @@
 """RAG支持模块，专为monitor中的桌面监视器设计"""
 
-import asyncio
 import logging
 import os
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-import json
 import httpx
 
 try:
