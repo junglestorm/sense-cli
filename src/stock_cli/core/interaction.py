@@ -11,12 +11,10 @@ from typing import Optional, List, Dict, Any
 
 import typer
 from rich import print
-import random
 from rich.console import Console
 from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.formatted_text import HTML
-from quote import quote
 
 from ..agent.runtime import ensure_kernel, get_kernel, current_model
 from ..core.session_manager import SessionManager
@@ -259,9 +257,7 @@ async def _interactive(
         try:
             user_input = await session.prompt_async(HTML('<ansicyan>stock-cli&gt; </ansicyan>'))
         except KeyboardInterrupt:
-            bye = quote('inspire', limit=15)
-            random_index = random.randint(0, len(bye) - 1)
-            console.print(f"[yellow]{bye[random_index]['quote']}![/yellow]")
+            console.print("[yellow]Bye![/yellow]")
             try:
                 await _cleanup_mcp_resources()
             except Exception:
@@ -273,9 +269,7 @@ async def _interactive(
                 pass
             break
         except EOFError:
-            bye = quote('inspire', limit=15)
-            random_index = random.randint(0, len(bye) - 1)
-            console.print(f"[yellow]{bye[random_index]['quote']}![/yellow]")
+            console.print("[yellow]Bye![/yellow]")
             try:
                 await _cleanup_mcp_resources()
             except Exception:
@@ -292,9 +286,7 @@ async def _interactive(
             continue
 
         if user_input in ["/quit", "/exit"]:
-            bye = quote('inspire', limit=15)
-            random_index = random.randint(0, len(bye) - 1)
-            console.print(f"[yellow]{bye[random_index]['quote']}![/yellow]")
+            console.print("[yellow]Bye![/yellow]")
             try:
                 await _cleanup_mcp_resources()
             except Exception:
