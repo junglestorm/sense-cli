@@ -27,6 +27,13 @@
       "command": "python",
       "args": ["src/stock_cli/tools/mcp_server/websearch_server.py"],
       "env": {}
+    },
+    {
+      "name": "sandbox_server",
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "stock_cli.tools.mcp_server.sandbox_server"],
+      "env": {}
     }
   ]
 }
