@@ -36,6 +36,8 @@ dependencies = [
     "pymupdf4llm>=0.0.27",
     "browser-history>=0.4.1",
     "tavily-python>=0.7.12",
+    "fastapi>=0.116.2",
+    "uvicorn[standard]>=0.35.0",
 ]
 
 [project.scripts]
@@ -51,7 +53,7 @@ packages = ["src/stock_cli"]
 
 [tool.uv]
 package = true
-index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+index-url = "https://mirrors.aliyun.com/pypi/simple/"
 
 
 
@@ -63,8 +65,14 @@ dev = [
     "ruff>=0.3.0",
     "black>=23.0.0",
     "isort>=5.12.0",
+    "pyclean>=3.0.0",
 ]
 
 [[tool.uv.index]]
-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+url = "https://mirrors.aliyun.com/pypi/simple/"
 default = true
+
+[dependency-groups]
+dev = [
+    "pyclean>=3.1.0",
+]
