@@ -34,6 +34,13 @@
       "command": "python",
       "args": ["-m", "stock_cli.tools.mcp_server.sandbox_server"],
       "env": {}
+    },
+    {
+      "name": "playwright_server",
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@executeautomation/playwright-mcp-server"],
+      "env": {}
     }
   ]
 }
